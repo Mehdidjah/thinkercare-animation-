@@ -55,9 +55,11 @@ async function main() {
 
   const seeded: Seeded[] = [];
 
-  // (a) Admin — force_change=1 (must change at first login).
-  await upsertUser(ADMIN_ID, 'direction', 'Direction ThinkerCare', 'admin', adminPassword, 1);
-  seeded.push({username: 'direction', password: adminPassword, role: 'admin', note: 'force_change=1 (change at first login)'});
+  // (a) Admin — direct login (force_change removed per request); keeps ADMIN_INITIAL_PASSWORD.
+  await upsertUser(ADMIN_ID, 'direction', 'Direction ThinkerCare', 'admin', adminPassword, 0);
+  // Also clear the flag on an already-seeded admin (updates force_change only, keeps the password).
+  await db().execute(sql`UPDATE tf_users SET force_change=0 WHERE id=${ADMIN_ID}`);
+  seeded.push({username: 'direction', password: adminPassword, role: 'admin', note: 'force_change=0 (direct login)'});
 
   // (b) Test accounts — force_change=0 (log in directly).
   const manager = {id: '11111111-1111-4111-8111-111111111111', username: 'gestion', label: 'Gestion — compte test'};
