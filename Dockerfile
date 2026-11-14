@@ -12,7 +12,9 @@ COPY app/bun.lock* ./
 # natively, so the build never needs `node` to run a postinstall script.
 RUN bun install --ignore-scripts
 COPY app/ ./
-RUN bun run build
+# --bun forces Bun's runtime: the oven/bun image has no `node`, and `vite`'s bin
+# has a `#!/usr/bin/env node` shebang that would otherwise fail.
+RUN bun run --bun build
 
 # ---------------------------------------------------------------------------
 # 2) Build the API (api/ -> api/dist, including copied triggers.sql + catalogue.json)
@@ -24,7 +26,9 @@ COPY api/bun.lock* ./
 # pure JS (nest/drizzle-orm/pg/aws-sdk) and migrations are pre-generated.
 RUN bun install --ignore-scripts
 COPY api/ ./
-RUN bun run build
+# --bun forces Bun's runtime (no `node` in the oven/bun image); `nest build` works
+# under Bun, as verified locally.
+RUN bun run --bun build
 
 # ---------------------------------------------------------------------------
 # 3) Runtime (Node 22 — the Dockerfile CMD runs node)
