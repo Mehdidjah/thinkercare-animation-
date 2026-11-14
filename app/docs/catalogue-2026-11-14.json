@@ -1,0 +1,786 @@
+{
+  "retrieved_at": "2026-11-14",
+  "sources": [
+    "https://www.touchelab.com/products.json?limit=250",
+    "https://belnco.com/products.json?limit=250"
+  ],
+  "excluded": [
+    "Touché TEST PRODUCT (test listing)"
+  ],
+  "products": [
+    {
+      "id": "touche-52284294070552",
+      "brand": "TOUCHE",
+      "name": "Water Complex sunscreen lot de 12",
+      "source_url": "https://www.touchelab.com/products/water-complex-sunscreen-lot-de-12",
+      "image_url": "",
+      "price_hint": 1155000,
+      "is_bulk": 1
+    },
+    {
+      "id": "wcspf",
+      "brand": "TOUCHE",
+      "name": "Water Complex sunscreen",
+      "source_url": "https://www.touchelab.com/products/water-complex-sunscreen",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_cc52de06-8b2c-4b43-86d6-0910551caf71.png?v=1782741758",
+      "price_hint": 150000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-51980099453208",
+      "brand": "TOUCHE",
+      "name": "Niacinamide + zinc Lot de 12",
+      "source_url": "https://www.touchelab.com/products/niacinamide-zinc-lot-de-12",
+      "image_url": "",
+      "price_hint": 1463000,
+      "is_bulk": 1
+    },
+    {
+      "id": "nia10",
+      "brand": "TOUCHE",
+      "name": "Niacinamide + Zinc",
+      "source_url": "https://www.touchelab.com/products/niacinamide-zinc",
+      "image_url": "",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-51976277557528",
+      "brand": "TOUCHE",
+      "name": "Acide Salicylique 10% - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/acide-salicylique-10-lot-de-12",
+      "image_url": "",
+      "price_hint": 2090000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-50567015498008",
+      "brand": "TOUCHE",
+      "name": "Spray Protecteur SPF 50  - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/spray-protecteur-spf-50-lot-de-12-2",
+      "image_url": "",
+      "price_hint": 1463000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-50485885763864",
+      "brand": "TOUCHE",
+      "name": "Protection Solaire Effet Sérum SPF 50 - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/protection-solaire-effet-serum-spf-50-lot-de-12",
+      "image_url": "",
+      "price_hint": 3540000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-50300427206936",
+      "brand": "TOUCHE",
+      "name": "[ Peaux Sensibles ] Acide Hyaluronique Ultra pure - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/peaux-sensibles-acide-hyaluronique-ultra-pure-lot-de-12",
+      "image_url": "",
+      "price_hint": 1386000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-50300385198360",
+      "brand": "TOUCHE",
+      "name": "Gel Vitamine C 11% + SPF 30 - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/gel-vitamine-c-11-spf-30-lot-de-12",
+      "image_url": "",
+      "price_hint": 2695000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393780654360",
+      "brand": "TOUCHE",
+      "name": "Shampoing Anti Chute - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/shampoing-anti-chute-lot-de-12",
+      "image_url": "",
+      "price_hint": 2090000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393779769624",
+      "brand": "TOUCHE",
+      "name": "Gel Nettoyant Visage - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/gel-nettoyant-visage-lot-de-12",
+      "image_url": "",
+      "price_hint": 2090000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393772593432",
+      "brand": "TOUCHE",
+      "name": "Creme Hydratante Visage - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/creme-hydratante-visage-lot-de-12",
+      "image_url": "",
+      "price_hint": 1078000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393772265752",
+      "brand": "TOUCHE",
+      "name": "Lotion Tonique - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/lotion-tonique-lot-de-12",
+      "image_url": "",
+      "price_hint": 2860000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393771807000",
+      "brand": "TOUCHE",
+      "name": "Vitamine C 11% - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/vitamine-c-11-lot-de-12",
+      "image_url": "",
+      "price_hint": 1870000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393770529048",
+      "brand": "TOUCHE",
+      "name": "Gel Acide Hyaluronique 3.5% Ultra pur - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/gel-acide-hyaluronique-3-5-ultra-pur-lot-de-12",
+      "image_url": "",
+      "price_hint": 1386000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393770135832",
+      "brand": "TOUCHE",
+      "name": "Pack Pousse et Croissance - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/pack-pousse-et-croissance-lot-de-12",
+      "image_url": "",
+      "price_hint": 3575000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393769906456",
+      "brand": "TOUCHE",
+      "name": "Apres Shampooing Pousse - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/apres-shampooing-pousse-lot-de-12",
+      "image_url": "",
+      "price_hint": 1870000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393769578776",
+      "brand": "TOUCHE",
+      "name": "Shampooing Pousse - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/shampooing-pousse-lot-de-12",
+      "image_url": "",
+      "price_hint": 2090000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393769120024",
+      "brand": "TOUCHE",
+      "name": "Gel Douche Anti-Imperfections - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/gel-douche-anti-imperfections-lot-de-12",
+      "image_url": "",
+      "price_hint": 1925000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393767022872",
+      "brand": "TOUCHE",
+      "name": "Pack Anti Chute - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/pack-anti-chute-lot-de-12",
+      "image_url": "",
+      "price_hint": 3245000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393763909912",
+      "brand": "TOUCHE",
+      "name": "Routine Psoriasis Control Junior - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/routine-psoriasis-control-junior-lot-de-12",
+      "image_url": "",
+      "price_hint": 6820000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393763713304",
+      "brand": "TOUCHE",
+      "name": "Shampoing Anti-Psoriasis - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/shampoing-anti-psoriasis-lot-de-12",
+      "image_url": "",
+      "price_hint": 1463000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393763254552",
+      "brand": "TOUCHE",
+      "name": "Serum Anti-Irritations - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/serum-anti-irritations-lot-de-12",
+      "image_url": "",
+      "price_hint": 3685000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393761648920",
+      "brand": "TOUCHE",
+      "name": "Acide Salicylique Ultra Pur 2% 30 ml - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/acide-salicylique-ultra-pur-2-30-ml-lot-de-12",
+      "image_url": "",
+      "price_hint": 2090000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393758732568",
+      "brand": "TOUCHE",
+      "name": "Routine-Psoriasis-Control - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/routine-psoriasis-control-lot-de-12",
+      "image_url": "",
+      "price_hint": 2656500,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393756537112",
+      "brand": "TOUCHE",
+      "name": "Serum Anti-Chute - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/serum-anti-chute-lot-de-12",
+      "image_url": "",
+      "price_hint": 2090000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393755619608",
+      "brand": "TOUCHE",
+      "name": "Anti-Acne - Lot de 12",
+      "source_url": "https://www.touchelab.com/products/anti-acne-lot-de-12",
+      "image_url": "",
+      "price_hint": 1386000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-49393753915672",
+      "brand": "TOUCHE",
+      "name": "Sérum Niacinamide 12% Ultra pur 30ml Lot de 12",
+      "source_url": "https://www.touchelab.com/products/serum-niacinamide-12-ultra-pur-30ml-lot-de-12",
+      "image_url": "",
+      "price_hint": 1463000,
+      "is_bulk": 1
+    },
+    {
+      "id": "wcrich",
+      "brand": "TOUCHE",
+      "name": "Water Complex Rich Cream [ Peaux Sèches à Sensibles ]",
+      "source_url": "https://www.touchelab.com/products/water-complex-rich-cream-peaux-seches-a-sensibles",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/WCRC1.png?v=1771256302",
+      "price_hint": 150000,
+      "is_bulk": 0
+    },
+    {
+      "id": "wccream",
+      "brand": "TOUCHE",
+      "name": "Water Complex Cream [ Peaux Normales à Mixtes ]",
+      "source_url": "https://www.touchelab.com/products/water-complex-cream-peaux-normales-a-mixtes",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/WCC1.png?v=1771256201",
+      "price_hint": 150000,
+      "is_bulk": 0
+    },
+    {
+      "id": "wcgel",
+      "brand": "TOUCHE",
+      "name": "Water Complex Gel [ Peaux Mixtes à Grasses ]",
+      "source_url": "https://www.touchelab.com/products/water-complex-gel-peaux-mixtes-a-grasses",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/WCG1.png?v=1771251828",
+      "price_hint": 150000,
+      "is_bulk": 0
+    },
+    {
+      "id": "nia12",
+      "brand": "TOUCHE",
+      "name": "Niacinamide 12% – ULTRA PURE · HIGH POTENCY",
+      "source_url": "https://www.touchelab.com/products/niacinamide-12-ultra-pure-high-potency",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_db6d76ca-c41f-4504-9e18-a7ea5ce0bc9d.png?v=1769449447",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "sal2",
+      "brand": "TOUCHE",
+      "name": "ACIDE SALICYLIQUE 2% ULTRA PURE · HIGH POTENCY",
+      "source_url": "https://www.touchelab.com/products/acide-salicylique-2-ultra-pure-high-potency",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/AS1.png?v=1769450808",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-51570283512088",
+      "brand": "TOUCHE",
+      "name": "Water Complex Gel Lot de 12",
+      "source_url": "https://www.touchelab.com/products/water-complex-gel-lot-de-12",
+      "image_url": "",
+      "price_hint": 1155000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-51570282037528",
+      "brand": "TOUCHE",
+      "name": "Water Complex Cream Lot de 12",
+      "source_url": "https://www.touchelab.com/products/water-complex-cream-lot-de-12",
+      "image_url": "",
+      "price_hint": 1155000,
+      "is_bulk": 1
+    },
+    {
+      "id": "touche-51570280988952",
+      "brand": "TOUCHE",
+      "name": "Water Complex RICH Lot de 12",
+      "source_url": "https://www.touchelab.com/products/water-complex-rich-lot-de-12",
+      "image_url": "",
+      "price_hint": 1155000,
+      "is_bulk": 1
+    },
+    {
+      "id": "patches",
+      "brand": "TOUCHE",
+      "name": "Micro-Dart Pimple Patches",
+      "source_url": "https://www.touchelab.com/products/micro-dart-pimple-patches",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_6ae39dc9-01f3-4580-9229-0c756c076f99.png?v=1769431662",
+      "price_hint": 260000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-50637296992536",
+      "brand": "TOUCHE",
+      "name": "Total Cleanser Hydratant lot de 12",
+      "source_url": "https://www.touchelab.com/products/total-cleanser-hydratant-lot-de-12",
+      "image_url": "",
+      "price_hint": 1463000,
+      "is_bulk": 1
+    },
+    {
+      "id": "total",
+      "brand": "TOUCHE",
+      "name": "Total Cleanser Hydratant",
+      "source_url": "https://www.touchelab.com/products/total-cleanser-hydratant",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_fad47f93-be62-4657-9617-caf08ea2d53d.jpg?v=1769606285",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "spray",
+      "brand": "TOUCHE",
+      "name": "Spray protecteur SPF 50",
+      "source_url": "https://www.touchelab.com/products/spray-protecteur-spf-50",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/SP1.png?v=1769611206",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-50566835634456",
+      "brand": "TOUCHE",
+      "name": "Spray Protecteur",
+      "source_url": "https://www.touchelab.com/products/spray-protecteur-spf-50-lot-de-12",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_ce9ed10f-a754-4aef-a92e-7015b7e4c939.png?v=1755194101",
+      "price_hint": 245000,
+      "is_bulk": 0
+    },
+    {
+      "id": "serumspf",
+      "brand": "TOUCHE",
+      "name": "Protection Solaire Effet Sérum SPF 50",
+      "source_url": "https://www.touchelab.com/products/protection-solaire-effet-serum-spf-50",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/PS1.png?v=1769611380",
+      "price_hint": 295000,
+      "is_bulk": 0
+    },
+    {
+      "id": "vitcspf",
+      "brand": "TOUCHE",
+      "name": "Gel Vitamine C 11% + SPF 30",
+      "source_url": "https://www.touchelab.com/products/gel-vitamine-c-11-spf-30",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/vitamine-c_8611c70e-f44d-432e-b8cf-540e49f341a4.png?v=1747318497",
+      "price_hint": 245000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-49760020529432",
+      "brand": "TOUCHE",
+      "name": "Nettoyant Anti-Imperfections",
+      "source_url": "https://www.touchelab.com/products/nettoyant-anti-imperfections-copy",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/touche-skincare-lab-default-title-nettoyant-anti-imperfections-sales-45141930344728.png?v=1731127849",
+      "price_hint": 175000,
+      "is_bulk": 0
+    },
+    {
+      "id": "sensitive",
+      "brand": "TOUCHE",
+      "name": "[ Peaux Sensibles ] ACIDE HYALURONIQUE + NIACINAMIDE ULTRA PURE · HIGH POTENCY",
+      "source_url": "https://www.touchelab.com/products/peaux-sensibles-acide-hyaluronique-niacinamide-ultra-pure-high-potency",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/PS-1.png?v=1769530850",
+      "price_hint": 180000,
+      "is_bulk": 0
+    },
+    {
+      "id": "shanti",
+      "brand": "TOUCHE",
+      "name": "Shampoing Anti Chute",
+      "source_url": "https://www.touchelab.com/products/shampoing-anti-chute",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/shampoing-anti-chute_fd9693c0-3966-4071-87d8-0610927d4489.png?v=1742301528",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "gelclean",
+      "brand": "TOUCHE",
+      "name": "Gel Nettoyant Purifiant Visage",
+      "source_url": "https://www.touchelab.com/products/gel-nettoyant-purifiant-visage",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_2.jpg?v=1769602058",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "vitc",
+      "brand": "TOUCHE",
+      "name": "VITAMINE C 11% ULTRA PURE · HIGH POTENCY",
+      "source_url": "https://www.touchelab.com/products/vitamine-c-11-ultra-pure-high-potency",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/VC-1.png?v=1769528313",
+      "price_hint": 170000,
+      "is_bulk": 0
+    },
+    {
+      "id": "lotion",
+      "brand": "TOUCHE",
+      "name": "Lotion tonique",
+      "source_url": "https://www.touchelab.com/products/lotion-tonique",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_b050fb27-a666-4383-a278-73bbc68fe9cb.jpg?v=1769606718",
+      "price_hint": 260000,
+      "is_bulk": 0
+    },
+    {
+      "id": "hcream",
+      "brand": "TOUCHE",
+      "name": "Crème hydratante visage",
+      "source_url": "https://www.touchelab.com/products/creme-hydratante-visage",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/2_e5cfdce6-a00e-4d4e-ba8e-250f36e77a7e.jpg?v=1769615656",
+      "price_hint": 140000,
+      "is_bulk": 0
+    },
+    {
+      "id": "ha35",
+      "brand": "TOUCHE",
+      "name": "ACIDE HYALURONIQUE 3,5 % ULTRA PURE · HIGH POTENCY",
+      "source_url": "https://www.touchelab.com/products/acide-hyaluronique-3-5-ultra-pure-high-potency",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/AH-1.png?v=1769532392",
+      "price_hint": 180000,
+      "is_bulk": 0
+    },
+    {
+      "id": "packpousse",
+      "brand": "TOUCHE",
+      "name": "Pack shampooing et après-shampooing pousse et croissance",
+      "source_url": "https://www.touchelab.com/products/pack-shampooing-et-apres-shampooing-pousse-et-croissance",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/pack-pousse_21f9751f-5a00-4edb-946d-c635fa6faa01.png?v=1742296444",
+      "price_hint": 325000,
+      "is_bulk": 0
+    },
+    {
+      "id": "conditioner",
+      "brand": "TOUCHE",
+      "name": "Après-Shampooing Densité",
+      "source_url": "https://www.touchelab.com/products/apres-shampooing-densite",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/apres-shampoing-pousse_99fe9aef-98e7-4e4c-8be6-d84491917e15.png?v=1742295002",
+      "price_hint": 170000,
+      "is_bulk": 0
+    },
+    {
+      "id": "shpousse",
+      "brand": "TOUCHE",
+      "name": "Shampooing Pousse et croissance",
+      "source_url": "https://www.touchelab.com/products/shampooing-pousse-et-croissance",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/shampoing-pousse_09da93bd-6ab8-4234-80b7-ffa6850f4c07.png?v=1742295066",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "serumhair",
+      "brand": "TOUCHE",
+      "name": "Sérum anti chute touché",
+      "source_url": "https://www.touchelab.com/products/serum-anti-chute-touche",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/serum-antichute.png?v=1742301806",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "bodypack",
+      "brand": "TOUCHE",
+      "name": "Touché Duo Anti Imperfection",
+      "source_url": "https://www.touchelab.com/products/touche-duo-anti-imperfection",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/Pack-Gel-douche-Nian-_-zinc.png?v=1744882209",
+      "price_hint": 354000,
+      "is_bulk": 0
+    },
+    {
+      "id": "bodywash",
+      "brand": "TOUCHE",
+      "name": "Gel Douche nettoyant Anti-Imperfections",
+      "source_url": "https://www.touchelab.com/products/gel-douche-nettoyant-anti-imperfections",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/Gel-douche_2.png?v=1744639464",
+      "price_hint": 175000,
+      "is_bulk": 0
+    },
+    {
+      "id": "packanti",
+      "brand": "TOUCHE",
+      "name": "Pack Anti Chute Touché",
+      "source_url": "https://www.touchelab.com/products/pack-anti-chute-touche",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/pack-antichute.png?v=1742302592",
+      "price_hint": 295000,
+      "is_bulk": 0
+    },
+    {
+      "id": "packjunior",
+      "brand": "TOUCHE",
+      "name": "Routine Psoriasis Control Junior",
+      "source_url": "https://www.touchelab.com/products/routine-psoriasis-control-junior-1",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/touche-skincare-lab-default-title-routine-psoriasis-control-junior-45704116076824.png?v=1731128198",
+      "price_hint": 620000,
+      "is_bulk": 0
+    },
+    {
+      "id": "packpso",
+      "brand": "TOUCHE",
+      "name": "Routine Psoriasis Control",
+      "source_url": "https://www.touchelab.com/products/routine-psoriasis-control",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/Pack-routine-Psoriasis.png?v=1744882024",
+      "price_hint": 345000,
+      "is_bulk": 0
+    },
+    {
+      "id": "serumpso",
+      "brand": "TOUCHE",
+      "name": "Anti-Irritations",
+      "source_url": "https://www.touchelab.com/products/anti-irritations",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/Anti-irritations_3a2811de-68c9-45b8-beba-0e6917b32df1.png?v=1770652676",
+      "price_hint": 180000,
+      "is_bulk": 0
+    },
+    {
+      "id": "shpso",
+      "brand": "TOUCHE",
+      "name": "Shampoing Anti-Psoriasis",
+      "source_url": "https://www.touchelab.com/products/shampoing-anti-psoriasis",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/shampoing-anti-pelllicu.png?v=1744642447",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "sal10",
+      "brand": "TOUCHE",
+      "name": "Acide Salicylique 10% Ultra Pure",
+      "source_url": "https://www.touchelab.com/products/acide-salicylique-10-ultra-pure",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/anti-imperfctions_2.png?v=1744639560",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-44538060767512",
+      "brand": "TOUCHE",
+      "name": "Anti Chute",
+      "source_url": "https://www.touchelab.com/products/anti-chute",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/AC1.png?v=1774519024",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "touche-44537994314008",
+      "brand": "TOUCHE",
+      "name": "Sérum Niacinamide 12% Ultra pure 30ml",
+      "source_url": "https://www.touchelab.com/products/serum-niacinamide-12-ultra-pure-30ml",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/Nicinamide-zinc_2.png?v=1744639102",
+      "price_hint": 190000,
+      "is_bulk": 0
+    },
+    {
+      "id": "antiacne",
+      "brand": "TOUCHE",
+      "name": "Anti Acné",
+      "source_url": "https://www.touchelab.com/products/anti-acne",
+      "image_url": "https://cdn.shopify.com/s/files/1/0719/5233/5128/files/1_87581144-4130-4f63-92d0-64ab12114d09.jpg?v=1769610730",
+      "price_hint": 180000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-58919074267481",
+      "brand": "BELNCO",
+      "name": "PORE REFINING UV BARRIER",
+      "source_url": "https://belnco.com/products/pore-refining-uv-barrier",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/product.png?v=1787240192",
+      "price_hint": 245000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-58893275562329",
+      "brand": "BELNCO",
+      "name": "Crème SPF 50 PORE REFINING UV BARRIER - Lot de 12",
+      "source_url": "https://belnco.com/products/creme-spf-50-pore-refining-uv-barrier-lot-de-12",
+      "image_url": "",
+      "price_hint": 2940000,
+      "is_bulk": 1
+    },
+    {
+      "id": "belnco-58893253542233",
+      "brand": "BELNCO",
+      "name": "Crème SPF 50 PORE REFINING UV BARRIER",
+      "source_url": "https://belnco.com/products/creme-spf-50-pore-refining-uv-barrier",
+      "image_url": "",
+      "price_hint": 245000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-57893301354841",
+      "brand": "BELNCO",
+      "name": "DOUBLE cleansing ritual",
+      "source_url": "https://belnco.com/products/double-cleansing-ritual",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/centella-double-cleansing_68ca1bbe-e885-4aec-95d0-426b5f495867.png?v=1776858024",
+      "price_hint": 480000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-57096107458905",
+      "brand": "BELNCO",
+      "name": "Centella Cleansing Oil",
+      "source_url": "https://belnco.com/products/centella-cleansing-oil-1",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/Cleansing-OIL.png?v=1771174675",
+      "price_hint": 225000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-57096106508633",
+      "brand": "BELNCO",
+      "name": "Centella Cleansing Gel",
+      "source_url": "https://belnco.com/products/centella-cleansing-gel-2",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/Gel-product.png?v=1770830370",
+      "price_hint": 255000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-57095365198169",
+      "brand": "BELNCO",
+      "name": "Centella Cleansing Oil  Lot de 12",
+      "source_url": "https://belnco.com/products/centella-cleansing-oil",
+      "image_url": "",
+      "price_hint": 2700000,
+      "is_bulk": 1
+    },
+    {
+      "id": "belnco-57095356383577",
+      "brand": "BELNCO",
+      "name": "Centella Cleansing Gel Lot de 12",
+      "source_url": "https://belnco.com/products/centella-cleansing-gel-1",
+      "image_url": "",
+      "price_hint": 3060000,
+      "is_bulk": 1
+    },
+    {
+      "id": "belnco-56253942137177",
+      "brand": "BELNCO",
+      "name": "100% PURE PRICKLY PEAR OIL",
+      "source_url": "https://belnco.com/products/100-pure-prickly-pear-oil",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/pure-prickly-pear-oil.png?v=1759058389",
+      "price_hint": 495000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-56160307413337",
+      "brand": "BELNCO",
+      "name": "Tinted Serum SPF 30 · LIGHT",
+      "source_url": "https://belnco.com/products/tinted-serum-spf-30?variant=56160307413337",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/N01.png?v=1757929970",
+      "price_hint": 465000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-56156732522841",
+      "brand": "BELNCO",
+      "name": "Tinted Serum SPF 30 · MEDIUM",
+      "source_url": "https://belnco.com/products/tinted-serum-spf-30?variant=56156732522841",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/N02.png?v=1757929794",
+      "price_hint": 465000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-56160310657369",
+      "brand": "BELNCO",
+      "name": "Tinted Serum SPF 30 · DARK",
+      "source_url": "https://belnco.com/products/tinted-serum-spf-30?variant=56160310657369",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/N03.png?v=1757929900",
+      "price_hint": 465000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868971450713",
+      "brand": "BELNCO",
+      "name": "Purifying Set",
+      "source_url": "https://belnco.com/products/purifying-set",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/purifying-duo.png?v=1754415020",
+      "price_hint": 0,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868970565977",
+      "brand": "BELNCO",
+      "name": "Hydration Duo Set",
+      "source_url": "https://belnco.com/products/hydration-duo-set",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/hydration-duo.png?v=1754414977",
+      "price_hint": 0,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868968468825",
+      "brand": "BELNCO",
+      "name": "Centella double cleansing set",
+      "source_url": "https://belnco.com/products/centella-double-cleansing-set",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/GEl-n-OIL.png?v=1771175003",
+      "price_hint": 0,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868962734425",
+      "brand": "BELNCO",
+      "name": "Anti-aging duo",
+      "source_url": "https://belnco.com/products/anti-aging-duo",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/anti-age-routine.png?v=1754414845",
+      "price_hint": 0,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868093432153",
+      "brand": "BELNCO",
+      "name": "RICH MOISTURIZER",
+      "source_url": "https://belnco.com/products/rich-moisturizer",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/Rich-moisturizer-3_5fbb1f01-978e-46f3-9c19-0c309ea7f475.png?v=1763288022",
+      "price_hint": 165000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868091400537",
+      "brand": "BELNCO",
+      "name": "RETINOL COMPLEX SERUM",
+      "source_url": "https://belnco.com/products/retinol-complex-serum",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/R0.png?v=1759056932",
+      "price_hint": 285000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868087632217",
+      "brand": "BELNCO",
+      "name": "CLARIFYING SERUM",
+      "source_url": "https://belnco.com/products/clarififying-serum",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/CL-1.png?v=1759155783",
+      "price_hint": 255000,
+      "is_bulk": 0
+    },
+    {
+      "id": "belnco-55868069249369",
+      "brand": "BELNCO",
+      "name": "CENTELLA SERUM SPF 30",
+      "source_url": "https://belnco.com/products/centella-serum-spf-30",
+      "image_url": "https://cdn.shopify.com/s/files/1/0589/4792/8255/files/C0.png?v=1759155581",
+      "price_hint": 275000,
+      "is_bulk": 0
+    }
+  ]
+}

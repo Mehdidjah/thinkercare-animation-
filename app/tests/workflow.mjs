@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {attendance,clockIssue,reportIssues,delayLabel} from '../src/terrain/domain/core.ts';
+const at='2026-11-14T07:00:00.000Z'; // 08:00 Algiers
+const m={id:'m1',field_id:'f1',day:'2026-11-14',start_at:at,status:'planned',actual_start:null,late_grace_minutes:15};
+assert.equal(attendance(m,at),null);
+assert.equal(attendance(m,'2026-11-14T07:14:59Z'),null);
+assert.equal(attendance(m,'2026-11-14T07:15:00Z'),null);
+assert.deepEqual(attendance(m,'2026-11-14T07:16:00Z'),{kind:'missing_start',minutes:16});
+assert.deepEqual(attendance({...m,status:'ongoing',actual_start:'2026-11-14T11:00:00Z'}),{kind:'late_start',minutes:240});
+assert.equal(delayLabel(240),'4 h');
+assert.equal(attendance({...m,status:'cancelled'},'2026-11-14T15:00:00Z'),null);
+assert.equal(attendance({...m,actual_start:'2026-11-14T06:45:00Z',status:'ongoing'}),null);
+assert.deepEqual(attendance({...m,late_grace_minutes:0},'2026-11-14T07:01:00Z'),{kind:'missing_start',minutes:1});
+assert.equal(clockIssue({id:'f1',role:'field'},m,'checkin',at),null);
+for(const u of [{id:'f2',role:'field'},{id:'f1',role:'admin'},{id:'f1',role:'doctor'}])assert.ok(clockIssue(u,m,'checkin',at));
+assert.ok(clockIssue({id:'f1',role:'field'},m,'checkin','2026-11-15T07:00:00Z'));
+assert.ok(clockIssue({id:'f1',role:'field'},m,'checkout',at));
+assert.equal(clockIssue({id:'f1',role:'field'},{...m,status:'ongoing',actual_start:at},'checkout',at),null);
+assert.ok(clockIssue({id:'f1',role:'field'},{...m,status:'completed',actual_start:at},'checkout',at));
+assert.deepEqual(reportIssues([],[{status:'valid',lines:[{product_id:'p',qty:2,unit_price:100}]}],false),[]);
+assert.ok(reportIssues([],[],false).length);
+assert.ok(reportIssues([{product_id:'p',opening:5,received:0,other_out:0,closing:null,note:''}],[],true).length);
+console.log('PASS: 20 attendance, authorization and unknown-stock workflow assertions.');
