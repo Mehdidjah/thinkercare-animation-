@@ -82,25 +82,26 @@ async function main() {
     );
   }
 
-  // Demo stores + one planned demo mission (so the dashboard is not empty).
-  const storeA = {id: 'aaaaaaa1-0000-4000-8000-000000000001', name: 'Pharmacie Centrale (démo)', city: 'Alger'};
-  const storeB = {id: 'aaaaaaa1-0000-4000-8000-000000000002', name: 'Parapharmacie du Parc (démo)', city: 'Oran'};
-  for (const s of [storeA, storeB]) {
-    await db().execute(
-      sql`INSERT INTO tf_stores(id,name,kind,city,address,contact,notes,active)
-          VALUES(${s.id},${s.name},'pharmacy',${s.city},'Adresse de démonstration','','Donnée de démonstration',1)
-          ON CONFLICT(id) DO NOTHING`,
-    );
+  // Demo stores (best-effort — demo data must never crash startup).
+  try {
+    const demoStores = [
+      {id: 'aaaaaaa1-0000-4000-8000-000000000001', name: 'Pharmacie Centrale (démo)', city: 'Alger'},
+      {id: 'aaaaaaa1-0000-4000-8000-000000000002', name: 'Parapharmacie du Parc (démo)', city: 'Oran'},
+    ];
+    for (const s of demoStores) {
+      await db().execute(
+        sql`INSERT INTO tf_stores(id,name,kind,city,address,contact,notes,active)
+            VALUES(${s.id},${s.name},'pharmacy',${s.city},'Adresse de démonstration','','Donnée de démonstration',1)
+            ON CONFLICT(id) DO NOTHING`,
+      );
+    }
+  } catch (e) {
+    console.warn('[seed] demo stores skipped:', (e as Error).message);
   }
-
-  const today = new Date(new Date().getTime() + 3600000).toISOString().slice(0, 10); // Alger day
-  const startAt = new Date(today + 'T09:00:00+01:00').toISOString();
-  const endAt = new Date(today + 'T13:00:00+01:00').toISOString();
-  await db().execute(
-    sql`INSERT INTO tf_missions(id,store_id,field_id,day,start_at,end_at,brands,device_location,instructions,status,report_status,created_by,updated_at,late_grace_minutes)
-        VALUES('bbbbbbb1-0000-4000-8000-000000000001',${storeA.id},${field.id},${today},${startAt},${endAt},${JSON.stringify(['TOUCHE'])}::jsonb,'','Animation de démonstration','planned','draft',${ADMIN_ID},${new Date().toISOString()},15)
-        ON CONFLICT(id) DO NOTHING`,
-  );
+  // No demo mission is seeded: the tf_no_overlap BEFORE-INSERT trigger fires
+  // ahead of ON CONFLICT DO NOTHING, so re-seeding one could clash with a real
+  // mission and crash startup. Schedule missions from the app
+  // (Planning & suivi -> Programmer).
 
   // Print credentials.
   console.log('\n=== Seed complete — accounts ===');
@@ -108,13 +109,16 @@ async function main() {
     console.log(`  ${s.role.padEnd(8)} username=${s.username.padEnd(12)} password=${s.password}   (${s.note})`);
   }
   console.log(`  products seeded: ${products.length}`);
-  console.log('  demo: 2 stores + 1 planned mission (today) for the "animatrice" account');
+  console.log('  demo: 2 stores (schedule missions from the app)');
   console.log('================================\n');
 
   await getPool().end();
 }
 
 main().catch((err) => {
-  console.error('[seed] failed:', err);
-  process.exit(1);
+  // Seed is idempotent and best-effort; a seed error must never stop the server
+  // from starting on a redeploy (the critical admin/catalogue rows are already
+  // in place). Log loudly and let the container continue to `node dist/main.js`.
+  console.error('[seed] error (continuing to start the server):', err);
+  process.exit(0);
 });
