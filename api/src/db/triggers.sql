@@ -12,29 +12,16 @@
 -- SQLite json_each(lines) -> Postgres jsonb_array_elements(lines).
 
 -- ---------------------------------------------------------------------------
--- Schedule overlap: no two non-cancelled missions may overlap in time for the
--- same field agent, nor for the same Dermoscan device.
-CREATE OR REPLACE FUNCTION tf_no_overlap() RETURNS trigger AS $$
-BEGIN
-  IF NEW.status <> 'cancelled' AND EXISTS (
-    SELECT 1 FROM tf_missions m
-    WHERE m.id <> NEW.id
-      AND m.status <> 'cancelled'
-      AND NEW.start_at < m.end_at
-      AND NEW.end_at > m.start_at
-      AND (m.field_id = NEW.field_id
-           OR (NEW.device_id IS NOT NULL AND m.device_id = NEW.device_id))
-  ) THEN
-    RAISE EXCEPTION 'SCHEDULE_CONFLICT';
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
+-- Schedule overlap check: DISABLED by request. Overlapping missions are now
+-- allowed — the same animatrice (or the same Dermoscan) may be programmed on
+-- overlapping horaires. We drop both the trigger AND its function so that
+-- existing databases have the restriction removed on the next deploy, and
+-- fresh databases never install it. Both DROPs are idempotent.
+-- To re-enable: restore the tf_no_overlap() function and a BEFORE INSERT OR
+-- UPDATE trigger on tf_missions that RAISE EXCEPTION 'SCHEDULE_CONFLICT' when a
+-- non-cancelled mission overlaps another for the same field_id or device_id.
 DROP TRIGGER IF EXISTS tf_no_overlap ON tf_missions;
-CREATE TRIGGER tf_no_overlap
-  BEFORE INSERT OR UPDATE ON tf_missions
-  FOR EACH ROW EXECUTE FUNCTION tf_no_overlap();
+DROP FUNCTION IF EXISTS tf_no_overlap();
 
 -- ---------------------------------------------------------------------------
 -- Report lock: counts may only be written while the mission is ongoing, or
