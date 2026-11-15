@@ -34,14 +34,22 @@ async function upsertUser(
   role: string,
   password: string,
   forceChange: number,
+  reset = false,
 ): Promise<void> {
   const salt = randomSalt();
   const hash = passwordHash(password, salt);
-  await db().execute(
-    sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,force_change,created_at)
-        VALUES(${id},${username},${label},${role},1,${salt},${hash},${forceChange},${new Date().toISOString()})
-        ON CONFLICT(id) DO NOTHING`,
-  );
+  const base = sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,force_change,created_at)
+        VALUES(${id},${username},${label},${role},1,${salt},${hash},${forceChange},${new Date().toISOString()})`;
+  // reset=true (test accounts): re-affirm the documented password on every deploy,
+  // so a bad password state can't persist. reset=false (admin): never touch the
+  // password that's already there.
+  if (reset) {
+    await db().execute(
+      sql`${base} ON CONFLICT(id) DO UPDATE SET label=EXCLUDED.label, salt=EXCLUDED.salt, password_hash=EXCLUDED.password_hash, force_change=EXCLUDED.force_change, active=1`,
+    );
+  } else {
+    await db().execute(sql`${base} ON CONFLICT(id) DO NOTHING`);
+  }
 }
 
 async function main() {
@@ -65,9 +73,9 @@ async function main() {
   const manager = {id: '11111111-1111-4111-8111-111111111111', username: 'gestion', label: 'Gestion — compte test'};
   const field = {id: '22222222-2222-4222-8222-222222222222', username: 'animatrice', label: 'Animatrice — compte test'};
   const doctor = {id: '33333333-3333-4333-8333-333333333333', username: 'medecin', label: 'Médecin — compte test'};
-  await upsertUser(manager.id, manager.username, manager.label, 'manager', managerPassword, 0);
-  await upsertUser(field.id, field.username, field.label, 'field', fieldPassword, 0);
-  await upsertUser(doctor.id, doctor.username, doctor.label, 'doctor', doctorPassword, 0);
+  await upsertUser(manager.id, manager.username, manager.label, 'manager', managerPassword, 0, true);
+  await upsertUser(field.id, field.username, field.label, 'field', fieldPassword, 0, true);
+  await upsertUser(doctor.id, doctor.username, doctor.label, 'doctor', doctorPassword, 0, true);
   seeded.push({username: 'gestion', password: managerPassword, role: 'manager', note: 'SEED_MANAGER_PASSWORD'});
   seeded.push({username: 'animatrice', password: fieldPassword, role: 'field', note: 'SEED_FIELD_PASSWORD'});
   seeded.push({username: 'medecin', password: doctorPassword, role: 'doctor', note: 'SEED_DOCTOR_PASSWORD'});
