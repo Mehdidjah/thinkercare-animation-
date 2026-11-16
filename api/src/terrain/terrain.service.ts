@@ -4,6 +4,7 @@ import {db} from '../db/client';
 import {type Exec, first, all, run, serializable, sql} from '../db/tx';
 import {fail} from '../common/errors';
 import {passwordHash, randomSalt} from '../common/crypto';
+import {sealPassword} from '../common/password-vault';
 import {id, uuid, brand, text, date, qty} from '../common/validation';
 import {mission, sales, counts, parseMission, range, auditSql, batchMission} from './helpers';
 import {manages, dayInAlger, shiftDay, attendance, reportIssues, ticketTotal, type User} from '../domain/core';
@@ -27,26 +28,22 @@ export class TerrainService {
     if (extra) return extra;
 
     if (action === 'bootstrap') {
-      const p = await all(db(), sql`SELECT * FROM tf_products ORDER BY brand,name LIMIT 2001`);
-      const stores =
-        u.role === 'doctor'
-          ? []
-          : manages(u)
-            ? await all(db(), sql`SELECT * FROM tf_stores ORDER BY name LIMIT 2001`)
-            : await all(
-                db(),
-                sql`SELECT DISTINCT s.* FROM tf_stores s JOIN tf_missions m ON m.store_id=s.id WHERE m.field_id=${u.id} ORDER BY s.name LIMIT 2001`,
-              );
-      const users = manages(u)
-        ? await all(db(), sql`SELECT id,username,label,role,active,force_change FROM tf_users ORDER BY label LIMIT 1001`)
-        : [];
-      const devices = manages(u) ? await all(db(), sql`SELECT * FROM tf_devices ORDER BY name LIMIT 1001`) : [];
+      if (u.force_change) return {user: u, products: [], stores: [], users: [], devices: [], limited: false, serverTime: iso()};
+      const manager = manages(u);
+      const [p, stores, users, devices] = await Promise.all([
+        all(db(), sql`SELECT * FROM tf_products ORDER BY brand,name LIMIT 2001`),
+        u.role === 'doctor' ? Promise.resolve([]) : manager
+          ? all(db(), sql`SELECT * FROM tf_stores ORDER BY name LIMIT 2001`)
+          : all(db(), sql`SELECT DISTINCT s.* FROM tf_stores s JOIN tf_missions m ON m.store_id=s.id WHERE m.field_id=${u.id} ORDER BY s.name LIMIT 2001`),
+        manager ? all(db(), sql`SELECT id,username,label,role,active,force_change,password_ciphertext IS NOT NULL AS password_available FROM tf_users ORDER BY label LIMIT 1001`) : Promise.resolve([]),
+        manager ? all(db(), sql`SELECT * FROM tf_devices ORDER BY name LIMIT 1001`) : Promise.resolve([]),
+      ]);
       return {
         user: u,
-        products: u.force_change ? [] : p,
-        stores: u.force_change ? [] : stores,
-        users: u.force_change ? [] : users,
-        devices: u.force_change ? [] : devices,
+        products: p,
+        stores,
+        users,
+        devices,
         limited: p.length > 2000 || stores.length > 2000 || users.length > 1000 || devices.length > 1000,
         serverTime: iso(),
       };
@@ -247,23 +244,24 @@ export class TerrainService {
       if (old?.role === 'admin') fail('Le compte direction se gère séparément.');
       if (old && old.role !== v.role) fail('Ne changez pas le rôle d’un compte existant : désactivez-le et créez un compte nominatif distinct.');
       if (!old && !v.password) fail('Mot de passe initial requis.');
+      const sealed = v.password ? sealPassword(v.id, v.password) : null;
       await serializable(async (tx) => {
         if (!old) {
           const salt = randomSalt();
           await run(
             tx,
-            sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,created_at)
-                VALUES(${v.id},${v.username},${v.label},${v.role},${+v.active},${salt},${passwordHash(v.password!, salt)},${iso()})`,
+            sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,password_ciphertext,created_at)
+                VALUES(${v.id},${v.username},${v.label},${v.role},${+v.active},${salt},${passwordHash(v.password!, salt)},${sealed},${iso()})`,
           );
         } else {
           await run(tx, sql`UPDATE tf_users SET label=${v.label},active=${+v.active} WHERE id=${v.id}`);
           if (v.password) {
             const salt = randomSalt();
-            await run(tx, sql`UPDATE tf_users SET salt=${salt},password_hash=${passwordHash(v.password, salt)},force_change=1 WHERE id=${v.id}`);
+            await run(tx, sql`UPDATE tf_users SET salt=${salt},password_hash=${passwordHash(v.password, salt)},password_ciphertext=${sealed},force_change=1 WHERE id=${v.id}`);
           }
           if (!v.active || v.password) await run(tx, sql`DELETE FROM tf_sessions WHERE user_id=${v.id}`);
         }
-        await run(tx, auditSql(u, 'account.updated', v.id, {role: v.role, active: v.active}));
+        await run(tx, auditSql(u, 'account.updated', v.id, {role: v.role, active: v.active, password_reset: !!old && !!v.password}));
       });
       return {ok: true};
     }

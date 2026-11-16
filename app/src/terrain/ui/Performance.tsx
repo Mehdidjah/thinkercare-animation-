@@ -37,7 +37,7 @@ export function Performance({data,details}:{data:any;details:ReactNode}){
 const today=dayInAlger(),manager=manages(data.user),[from,setFrom]=useState(today.slice(0,7)+'-01'),[to,setTo]=useState(today),[person,setPerson]=useState(''),[store,setStore]=useState(''),[tab,setTab]=useState('overview'),[rank,setRank]=useState<'tickets'|'revenue'>('tickets'),[productSearch,setProductSearch]=useState(''),[brand,setBrand]=useState('');
 
 
-const r=useRemote('action=performance&'+new URLSearchParams({from,to,person,store})),bonus=useRemote('action=bonuses'),d=r.data;
+const r=useRemote('action=performance&'+new URLSearchParams({from,to,person,store})),bonus=useRemote('action=bonuses',tab==='bonus'),d=r.data;
 
 
 const team=d?[...d.people].sort((a:any,b:any)=>b[rank]-a[rank]):[],products=(d?.products||[]).filter((p:any)=>(!brand||p.brand===brand)&&p.name.toLowerCase().includes(productSearch.toLowerCase()));

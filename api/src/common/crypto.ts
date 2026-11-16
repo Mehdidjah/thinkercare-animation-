@@ -1,4 +1,4 @@
-import {createHash, pbkdf2Sync, randomBytes, randomUUID} from 'node:crypto';
+import {createHash, pbkdf2, pbkdf2Sync, randomBytes, randomUUID} from 'node:crypto';
 
 /** Hex-encode bytes. */
 export const hex = (b: Buffer | Uint8Array) => Buffer.from(b).toString('hex');
@@ -15,6 +15,15 @@ export function sha(s: string): string {
 export function passwordHash(password: string, saltHex: string): string {
   const salt = Buffer.from(saltHex, 'hex');
   return hex(pbkdf2Sync(password, salt, 100000, 32, 'sha256'));
+}
+
+/** Same password hash, computed off the request/event-loop thread. */
+export function passwordHashAsync(password: string, saltHex: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    pbkdf2(password, Buffer.from(saltHex, 'hex'), 100000, 32, 'sha256', (error, hash) => {
+      if (error) reject(error); else resolve(hex(hash));
+    });
+  });
 }
 
 /**

@@ -1,0 +1,1 @@
+ALTER TABLE "tf_users" ADD COLUMN "password_ciphertext" text;

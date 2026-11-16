@@ -35,6 +35,7 @@ export const tfUsers = pgTable('tf_users', {
   active: integer('active').notNull().default(1),
   salt: text('salt').notNull(),
   passwordHash: text('password_hash').notNull(),
+  passwordCiphertext: text('password_ciphertext'),
   forceChange: integer('force_change').notNull().default(1),
   createdAt: text('created_at').notNull(),
 }, (t) => ({

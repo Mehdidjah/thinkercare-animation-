@@ -42,7 +42,9 @@ export class TerrainController {
     if (!b || typeof b !== 'object' || Array.isArray(b)) fail('Objet JSON requis.');
 
     if (b.action === 'login') {
-      res.json(await this.auth.login(b, req, res));
+      const login = await this.auth.login(b, req, res);
+      res.setHeader('Cache-Control', 'no-store');
+      res.json({ok: true, ...await this.terrain.getTerrain(login.user, new URLSearchParams())});
       return;
     }
     const u = await this.auth.current(req);
@@ -55,6 +57,11 @@ export class TerrainController {
       return;
     }
     if (u.force_change) fail('Changez votre mot de passe initial.', 403);
+    if (b.action === 'user-password') {
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(await this.auth.revealPassword(u, b, req));
+      return;
+    }
     res.json(await this.terrain.postTerrain(u, b));
   }
 }

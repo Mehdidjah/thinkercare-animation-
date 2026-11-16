@@ -2,10 +2,11 @@ import {Injectable} from '@nestjs/common';
 import type {Request, Response} from 'express';
 import {z} from 'zod';
 import {db} from '../db/client';
-import {first, run, sql} from '../db/tx';
+import {first, run, serializable, sql} from '../db/tx';
 import {fail} from '../common/errors';
-import {sha, passwordHash, equal, randomToken, randomSalt, randomUUID} from '../common/crypto';
+import {sha, passwordHash, passwordHashAsync, equal, randomToken, randomSalt, randomUUID} from '../common/crypto';
 import type {User} from '../domain/core';
+import {sealPassword, openPassword} from '../common/password-vault';
 
 export const COOKIE = '__Host-terrain-session';
 const SESSION_MS = 28800000; // 8h
@@ -66,29 +67,31 @@ export class AuthService {
     return first || req.ip || 'unknown';
   }
 
-  async login(body: unknown, req: Request, res: Response): Promise<{ok: true}> {
+  async login(body: unknown, req: Request, res: Response): Promise<{ok: true; user: User}> {
     const v = z
       .object({action: z.literal('login'), username: text(60).min(1), password: z.string().min(1).max(200)})
       .strict()
       .parse(body);
     const now = Date.now();
     const key = sha(this.clientIp(req) + '|' + Math.floor(now / THROTTLE_WINDOW_MS));
-    await run(
+    const limit = await first<{count: number}>(
       db(),
       sql`INSERT INTO tf_throttle(bucket,count,expires) VALUES(${key},1,${now + THROTTLE_WINDOW_MS})
-          ON CONFLICT(bucket) DO UPDATE SET count=tf_throttle.count+1`,
+          ON CONFLICT(bucket) DO UPDATE SET count=tf_throttle.count+1 RETURNING count`,
     );
-    const limit = await first<{count: number}>(db(), sql`SELECT count FROM tf_throttle WHERE bucket=${key}`);
     if ((limit?.count ?? 0) > 20) fail('Trop de tentatives. Réessayez dans 15 minutes.', 429);
     const r = await first<any>(db(), sql`SELECT * FROM tf_users WHERE username=${v.username.toLowerCase()}`);
-    const h = passwordHash(v.password, r?.salt || DEFAULT_SALT);
+    const h = await passwordHashAsync(v.password, r?.salt || DEFAULT_SALT);
     if (!r || !r.active || !equal(h, r.password_hash)) fail('Identifiant ou mot de passe incorrect.', 401);
     const t = randomToken();
-    await run(db(), sql`INSERT INTO tf_sessions(token_hash,user_id,expires) VALUES(${sha(t)},${r.id},${now + SESSION_MS})`);
-    await run(db(), sql`DELETE FROM tf_sessions WHERE expires<${now}`);
-    await run(db(), sql`DELETE FROM tf_throttle WHERE expires<${now}`);
+    await Promise.all([
+      run(db(), sql`INSERT INTO tf_sessions(token_hash,user_id,expires) VALUES(${sha(t)},${r.id},${now + SESSION_MS})`),
+      run(db(), sql`DELETE FROM tf_sessions WHERE expires<${now}`),
+      run(db(), sql`DELETE FROM tf_throttle WHERE expires<${now}`),
+    ]);
     this.setCookie(res, t, SESSION_MS);
-    return {ok: true};
+    const {id, username, label, role, active, force_change} = r;
+    return {ok: true, user: {id, username, label, role, active, force_change}};
   }
 
   async logout(req: Request, res: Response): Promise<{ok: true}> {
@@ -102,25 +105,58 @@ export class AuthService {
       .object({action: z.literal('password'), current: z.string().max(200), next: z.string().min(14).max(200)})
       .strict()
       .parse(body);
-    const r = await first<any>(db(), sql`SELECT salt,password_hash FROM tf_users WHERE id=${user.id}`);
-    if (!equal(passwordHash(v.current, r.salt), r.password_hash)) fail('Mot de passe actuel incorrect.');
     if (v.current === v.next) fail('Choisissez un nouveau mot de passe.');
     const salt = randomSalt();
     const hash = passwordHash(v.next, salt);
+    const sealed = user.role === 'admin' ? null : sealPassword(user.id, v.next);
     const now = new Date().toISOString();
-    await run(
-      db(),
-      sql`UPDATE tf_users SET salt=${salt},password_hash=${hash},force_change=0 WHERE id=${user.id}`,
-    );
-    await run(
-      db(),
-      sql`DELETE FROM tf_sessions WHERE user_id=${user.id} AND token_hash<>${sha(this.token(req))}`,
-    );
-    await run(
-      db(),
-      sql`INSERT INTO tf_audit(id,user_id,at,action,target,detail) VALUES(${randomUUID()},${user.id},${now},'account.password',${user.id},${'{}'}::jsonb)`,
-    );
+    const tokenHash = sha(this.token(req));
+    await serializable(async (tx) => {
+      // Recheck and lock the account inside the transaction, including the
+      // session: a concurrent admin reset/deactivation must not be overwritten.
+      const r = await first<{salt: string; password_hash: string}>(
+        tx,
+        sql`SELECT u.salt,u.password_hash FROM tf_users u JOIN tf_sessions s ON s.user_id=u.id
+            WHERE u.id=${user.id} AND u.active=1 AND s.token_hash=${tokenHash} AND s.expires>${Date.now()}
+            FOR UPDATE OF u`,
+      );
+      if (!r) fail('Votre session a expiré.', 401);
+      if (!equal(passwordHash(v.current, r.salt), r.password_hash)) fail('Mot de passe actuel incorrect.');
+      await run(tx, sql`UPDATE tf_users SET salt=${salt},password_hash=${hash},password_ciphertext=${sealed},force_change=0 WHERE id=${user.id}`);
+      await run(tx, sql`DELETE FROM tf_sessions WHERE user_id=${user.id} AND token_hash<>${tokenHash}`);
+      await run(
+        tx,
+        sql`INSERT INTO tf_audit(id,user_id,at,action,target,detail) VALUES(${randomUUID()},${user.id},${now},'account.password',${user.id},${'{}'}::jsonb)`,
+      );
+    });
     return {ok: true};
+  }
+
+  async revealPassword(user: User, body: unknown, req: Request): Promise<{password: string | null}> {
+    if (user.role !== 'admin' || user.force_change) fail('Accès direction requis.', 403);
+    const v = z.object({action: z.literal('user-password'), id: z.string().uuid(), adminPassword: z.string().min(1).max(200)}).strict().parse(body);
+    const now = Date.now();
+    const bucket = sha('password-reveal|' + user.id + '|' + Math.floor(now / THROTTLE_WINDOW_MS));
+    const limit = await first<{count: number}>(db(), sql`INSERT INTO tf_throttle(bucket,count,expires)
+      VALUES(${bucket},1,${now + THROTTLE_WINDOW_MS}) ON CONFLICT(bucket) DO UPDATE SET count=tf_throttle.count+1 RETURNING count`);
+    if ((limit?.count ?? 0) > 10) fail('Trop de consultations. Réessayez dans 15 minutes.', 429);
+
+    return serializable(async (tx) => {
+      const admin = await first<{salt: string; password_hash: string}>(tx,
+        sql`SELECT u.salt,u.password_hash FROM tf_users u JOIN tf_sessions s ON s.user_id=u.id
+            WHERE u.id=${user.id} AND u.role='admin' AND u.active=1 AND u.force_change=0
+            AND s.token_hash=${sha(this.token(req))} AND s.expires>${now} FOR UPDATE OF u`);
+      if (!admin) fail('Votre session a expiré.', 401);
+      if (!equal(passwordHash(v.adminPassword, admin.salt), admin.password_hash)) fail('Votre mot de passe administrateur est incorrect.', 403);
+      const target = await first<{role: string; password_ciphertext: string | null}>(tx,
+        sql`SELECT role,password_ciphertext FROM tf_users WHERE id=${v.id}`);
+      if (!target) fail('Compte introuvable.', 404);
+      if (target.role === 'admin') fail('Le compte direction se gère séparément.', 403);
+      const password = target.password_ciphertext ? openPassword(v.id, target.password_ciphertext) : null;
+      await run(tx, sql`INSERT INTO tf_audit(id,user_id,at,action,target,detail)
+        VALUES(${randomUUID()},${user.id},${new Date(now).toISOString()},'account.password_viewed',${v.id},${'{}'}::jsonb)`);
+      return {password};
+    });
   }
 
   private setCookie(res: Response, token: string, maxAgeMs: number) {

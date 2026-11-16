@@ -2,19 +2,16 @@ import {readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
 import {db, getPool} from './client';
-import {passwordHash, randomSalt, randomUUID} from '../common/crypto';
+import {passwordHash, randomSalt} from '../common/crypto';
+import {sealPassword} from '../common/password-vault';
 
 /**
- * Seeds the baseline (design §9.1.3/4): the `direction` admin (force_change=1,
- * password from ADMIN_INITIAL_PASSWORD), three test accounts the human logs in
- * with directly (force_change=0), the full product catalogue, and a little demo
- * data so the dashboard is not empty. Idempotent: users/stores/mission use
- * ON CONFLICT DO NOTHING (never resets a changed password), products upsert.
+ * Seeds the initial admin, explicitly configured test accounts, catalogue and
+ * demo stores. Existing accounts are never changed: personal passwords, admin
+ * resets, required password changes and deactivations must survive every boot.
  */
 
 const ADMIN_ID = '09d4ed63-862d-4224-8644-12fb416f590f'; // same identity as the original migration
-
-type Seeded = {username: string; password: string; role: string; note: string};
 
 function catalogue(): any[] {
   const candidates = [
@@ -27,29 +24,20 @@ function catalogue(): any[] {
   return JSON.parse(readFileSync(found, 'utf8'));
 }
 
-async function upsertUser(
+async function seedUser(
   id: string,
   username: string,
   label: string,
   role: string,
   password: string,
   forceChange: number,
-  reset = false,
 ): Promise<void> {
   const salt = randomSalt();
   const hash = passwordHash(password, salt);
-  const base = sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,force_change,created_at)
-        VALUES(${id},${username},${label},${role},1,${salt},${hash},${forceChange},${new Date().toISOString()})`;
-  // reset=true (test accounts): re-affirm the documented password on every deploy,
-  // so a bad password state can't persist. reset=false (admin): never touch the
-  // password that's already there.
-  if (reset) {
-    await db().execute(
-      sql`${base} ON CONFLICT(id) DO UPDATE SET label=EXCLUDED.label, salt=EXCLUDED.salt, password_hash=EXCLUDED.password_hash, force_change=EXCLUDED.force_change, active=1`,
-    );
-  } else {
-    await db().execute(sql`${base} ON CONFLICT(id) DO NOTHING`);
-  }
+  const sealed = role === 'admin' ? null : sealPassword(id, password);
+  await db().execute(sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,password_ciphertext,force_change,created_at)
+        VALUES(${id},${username},${label},${role},1,${salt},${hash},${sealed},${forceChange},${new Date().toISOString()})
+        ON CONFLICT DO NOTHING`);
 }
 
 async function main() {
@@ -57,28 +45,21 @@ async function main() {
   if (!adminPassword) {
     throw new Error('ADMIN_INITIAL_PASSWORD is required to seed the initial admin account.');
   }
-  const managerPassword = process.env.SEED_MANAGER_PASSWORD || 'Gestion-Terrain-2026';
-  const fieldPassword = process.env.SEED_FIELD_PASSWORD || 'Animatrice-Terrain-2026';
-  const doctorPassword = process.env.SEED_DOCTOR_PASSWORD || 'Medecin-Terrain-2026';
+  // Initial admin has direct access; subsequent boots preserve all account state.
+  await seedUser(ADMIN_ID, 'direction', 'Direction ThinkerCare', 'admin', adminPassword, 0);
 
-  const seeded: Seeded[] = [];
-
-  // (a) Admin — direct login (force_change removed per request); keeps ADMIN_INITIAL_PASSWORD.
-  await upsertUser(ADMIN_ID, 'direction', 'Direction ThinkerCare', 'admin', adminPassword, 0);
-  // Also clear the flag on an already-seeded admin (updates force_change only, keeps the password).
-  await db().execute(sql`UPDATE tf_users SET force_change=0 WHERE id=${ADMIN_ID}`);
-  seeded.push({username: 'direction', password: adminPassword, role: 'admin', note: 'force_change=0 (direct login)'});
-
-  // (b) Test accounts — force_change=0 (log in directly).
-  const manager = {id: '11111111-1111-4111-8111-111111111111', username: 'gestion', label: 'Gestion — compte test'};
-  const field = {id: '22222222-2222-4222-8222-222222222222', username: 'animatrice', label: 'Animatrice — compte test'};
-  const doctor = {id: '33333333-3333-4333-8333-333333333333', username: 'medecin', label: 'Médecin — compte test'};
-  await upsertUser(manager.id, manager.username, manager.label, 'manager', managerPassword, 0, true);
-  await upsertUser(field.id, field.username, field.label, 'field', fieldPassword, 0, true);
-  await upsertUser(doctor.id, doctor.username, doctor.label, 'doctor', doctorPassword, 0, true);
-  seeded.push({username: 'gestion', password: managerPassword, role: 'manager', note: 'SEED_MANAGER_PASSWORD'});
-  seeded.push({username: 'animatrice', password: fieldPassword, role: 'field', note: 'SEED_FIELD_PASSWORD'});
-  seeded.push({username: 'medecin', password: doctorPassword, role: 'doctor', note: 'SEED_DOCTOR_PASSWORD'});
+  // Optional test accounts require explicit passwords. No shared fallback
+  // credentials are created, and existing accounts are retained without them.
+  const accounts = [
+    {id: '11111111-1111-4111-8111-111111111111', username: 'gestion', label: 'Gestion — compte test', role: 'manager', password: process.env.SEED_MANAGER_PASSWORD},
+    {id: '22222222-2222-4222-8222-222222222222', username: 'animatrice', label: 'Animatrice — compte test', role: 'field', password: process.env.SEED_FIELD_PASSWORD},
+    {id: '33333333-3333-4333-8333-333333333333', username: 'medecin', label: 'Médecin — compte test', role: 'doctor', password: process.env.SEED_DOCTOR_PASSWORD},
+  ];
+  for (const account of accounts) {
+    if (account.password) {
+      await seedUser(account.id, account.username, account.label, account.role, account.password, 0);
+    }
+  }
 
   // (c) Full product catalogue (baseline).
   const products = catalogue();
@@ -111,11 +92,7 @@ async function main() {
   // mission and crash startup. Schedule missions from the app
   // (Planning & suivi -> Programmer).
 
-  // Print credentials.
-  console.log('\n=== Seed complete — accounts ===');
-  for (const s of seeded) {
-    console.log(`  ${s.role.padEnd(8)} username=${s.username.padEnd(12)} password=${s.password}   (${s.note})`);
-  }
+  console.log('\n=== Seed complete — existing account credentials preserved ===');
   console.log(`  products seeded: ${products.length}`);
   console.log('  demo: 2 stores (schedule missions from the app)');
   console.log('================================\n');

@@ -1,33 +1,40 @@
 import {checkedResult} from '../domain/response-checks';
 import {useState, useEffect, useCallback, useRef, type ReactNode, type FormEvent} from 'react';
-import {request} from './client';
+import {request, cachedResult} from './client';
 import {csv} from '../domain/core';
 
-export function useRemote(query:string) {
- const [data,setData] = useState<any>(null);
+export function useRemote(query:string, enabled=true) {
+ const [data,setData] = useState<any>(() => enabled ? cachedResult(query) ?? null : null);
  const [error,setError] = useState('');
- const [loading,setLoading] = useState(true);
+ const [loading,setLoading] = useState(() => enabled && cachedResult(query) === undefined);
  const latest = useRef({query, sequence:0, mounted:true});
  latest.current.query = query;
 
- const reload = useCallback(async () => {
+ const reload = useCallback(async (fresh=true) => {
+  if (!enabled) return;
   const sequence = ++latest.current.sequence;
   const isCurrent = () => latest.current.mounted && latest.current.query===query && latest.current.sequence===sequence;
   try {
-   const result = checkedResult(query, await request(query));
+   const result = checkedResult(query, await request(query, undefined, {fresh}));
    if (isCurrent()) {setData(result);setError('');}
   } catch (e) {
-   if (isCurrent()) setError((e as Error).message);
+   if (isCurrent() && !(e as any).stale) {
+    setError((e as Error).message);
+    if ([401,403].includes((e as any).status)) setData(null);
+   }
   } finally {
    if (isCurrent()) setLoading(false);
   }
- }, [query]);
+ }, [query,enabled]);
 
  useEffect(() => {
   latest.current.mounted=true;
-  setData(null);
-  setLoading(true);
-  void reload();
+  const cached = enabled ? cachedResult(query) : undefined;
+  setData(cached ?? null);
+  setError('');
+  setLoading(enabled && cached === undefined);
+  if (!enabled) return;
+  void reload(false);
   const timer=setInterval(() => {
    if (document.visibilityState==='visible') void reload();
   },20000);
