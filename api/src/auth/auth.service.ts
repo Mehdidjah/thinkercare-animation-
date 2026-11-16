@@ -102,7 +102,7 @@ export class AuthService {
 
   async changePassword(user: User, body: unknown, req: Request): Promise<{ok: true}> {
     const v = z
-      .object({action: z.literal('password'), current: z.string().max(200), next: z.string().min(14).max(200)})
+      .object({action: z.literal('password'), current: z.string().max(200), next: z.string().min(1).max(200)})
       .strict()
       .parse(body);
     if (v.current === v.next) fail('Choisissez un nouveau mot de passe.');

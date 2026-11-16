@@ -33,9 +33,9 @@ export function Password({done, required = false}: {done: () => void | Promise<v
       : 'Votre nouveau mot de passe sera enregistré pour vos prochaines connexions.'}</p>
     <form onSubmit={save}>
       <label>Mot de passe actuel<input name="current" type="password" autoComplete="current-password" maxLength={200} required disabled={busy}/></label>
-      <label>Nouveau mot de passe<input name="next" type="password" autoComplete="new-password" minLength={14} maxLength={200} required disabled={busy}/></label>
-      <label>Confirmer le nouveau mot de passe<input name="confirm" type="password" autoComplete="new-password" minLength={14} maxLength={200} required disabled={busy}/></label>
-      <small>14 caractères minimum. Les autres sessions seront déconnectées.</small>
+      <label>Nouveau mot de passe<input name="next" type="password" autoComplete="new-password" maxLength={200} required disabled={busy}/></label>
+      <label>Confirmer le nouveau mot de passe<input name="confirm" type="password" autoComplete="new-password" maxLength={200} required disabled={busy}/></label>
+      <small>Les autres sessions seront déconnectées.</small>
       <small>L’administrateur peut consulter ce mot de passe et le réinitialiser. Choisissez un mot de passe réservé à Terrain.</small>
       {error && <div className="notice error" role="alert">{error}</div>}
       <button className="primary" disabled={busy}>{busy ? 'Enregistrement…' : 'Enregistrer mon mot de passe'}</button>
@@ -111,7 +111,7 @@ export function AdminPasswordField({existing}: {existing: boolean}) {
   return <>
     <label htmlFor={id}>{existing ? 'Réinitialiser le mot de passe' : 'Mot de passe temporaire'}
       <input id={id} name="password" type={visible ? 'text' : 'password'} autoComplete="new-password"
-        minLength={14} maxLength={200} required={!existing} value={value}
+        maxLength={200} required={!existing} value={value}
         onChange={event => setValue(event.target.value)} aria-describedby={id + '-help'}/>
     </label>
     <div className="section-head">

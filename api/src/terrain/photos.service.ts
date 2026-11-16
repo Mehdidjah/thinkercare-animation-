@@ -10,6 +10,7 @@ import {mission, noteBy, auditSql, batchMission} from './helpers';
 import {StorageService} from '../storage/storage.service';
 import {canEdit, clockIssue, manages, type User} from '../domain/core';
 import {photoFormData} from './body';
+import {photoFile} from './photo-limits';
 
 const iso = () => new Date().toISOString();
 
@@ -32,9 +33,8 @@ export class PhotosService {
   // POST /api/photos — port of uploadPhoto(). (Origin check performed by controller.)
   async uploadPhoto(u: User, req: Request): Promise<any> {
     if (u.force_change) fail('Changez votre mot de passe.', 403);
-    if (Number(req.headers['content-length'] || 0) > 5300000) fail('Photo trop volumineuse.', 413);
     const form = await photoFormData(req);
-    const file = form.get('photo');
+    const file = photoFile(form.get('photo'));
     const key = uuid.parse(form.get('mission_id'));
     const purpose = z.enum(['report', 'checkin', 'checkout']).parse(form.get('purpose') || 'report');
     const photo = uuid.parse(form.get('photo_id') || randomUUID());
@@ -52,7 +52,6 @@ export class PhotosService {
       const issue = clockIssue(u, m, purpose);
       if (issue) fail(issue, 409);
     }
-    if (!(file instanceof File) || file.size > 5000000 || file.size < 12) fail('JPEG, PNG ou WebP de 5 Mo maximum.');
     if (form.get('no_person') !== 'true') fail('Confirmez une photo du lieu sans personnes ni documents personnels.');
     const caption = text(300).parse(form.get('caption') || '');
     const bytes = new Uint8Array(await (file as File).arrayBuffer());
@@ -101,8 +100,8 @@ export class PhotosService {
   // GET/POST /api/field-photos — port of fieldPhotoEndpoint() (uploadFieldMedia / readFieldMedia).
   async uploadFieldMedia(u: User, req: Request): Promise<any> {
     if (u.role === 'doctor') fail('Accès non autorisé.', 403);
-    if (Number(req.headers['content-length'] || 0) > 5300000) fail('Photo trop volumineuse.', 413);
     const f = await photoFormData(req);
+    const input = photoFile(f.get('photo'));
     const key = uuid.parse(f.get('note_id'));
     const photo = uuid.parse(f.get('photo_id'));
     const n = await noteBy(db(), u, key);
@@ -112,8 +111,6 @@ export class PhotosService {
       if (old.note_id !== key || old.user_id !== u.id) fail('Identifiant déjà utilisé.', 409);
       return {ok: true, id: photo};
     }
-    const input = f.get('photo');
-    if (!(input instanceof File) || input.size > 5000000 || input.size < 12) fail('Photo de 5 Mo maximum.');
     if (f.get('no_person') !== 'true') fail('Confirmez une photo de rayon sans personnes ni documents personnels.');
     const bytes = new Uint8Array(await (input as File).arrayBuffer());
     const mime = sniff(bytes);

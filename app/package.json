@@ -8,6 +8,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:requests": "bun test tests/request-cache.test.ts",
+    "test:photos": "bun test tests/photo-file.test.ts",
     "lint": "eslint ."
   },
   "dependencies": {

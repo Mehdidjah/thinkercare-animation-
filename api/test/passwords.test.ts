@@ -6,12 +6,16 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createServer} from 'node:net';
 import {randomBytes, randomUUID} from 'node:crypto';
+import {Readable} from 'node:stream';
 import {AuthService, COOKIE} from '../src/auth/auth.service';
 import {TerrainService} from '../src/terrain/terrain.service';
 import {TerrainController} from '../src/terrain/terrain.controller';
 import {OperationsService} from '../src/terrain/operations.service';
 import {getPool} from '../src/db/client';
 import {sealPassword, openPassword} from '../src/common/password-vault';
+import {PhotosService} from '../src/terrain/photos.service';
+import {StorageService} from '../src/storage/storage.service';
+import {PHOTO_MAX_BYTES} from '../src/terrain/photo-limits';
 
 // Always starts a disposable local Postgres cluster. Never connects to the
 // developer's DATABASE_URL, Railway, or a shared database.
@@ -74,6 +78,7 @@ beforeAll(async () => {
   started = true;
   Object.assign(process.env, {DATABASE_URL: `postgres://terrain_test@127.0.0.1:${port}/postgres`,
     DATABASE_SSL: 'false', PGSSLMODE: 'disable', ACCOUNT_PASSWORD_KEY: randomBytes(32).toString('hex'),
+    STORAGE_DIR: join(directory, 'photos'), S3_BUCKET: '', S3_ACCESS_KEY_ID: '', S3_SECRET_ACCESS_KEY: '',
     ADMIN_INITIAL_PASSWORD: initial.direction, SEED_MANAGER_PASSWORD: initial.gestion,
     SEED_FIELD_PASSWORD: initial.animatrice, SEED_DOCTOR_PASSWORD: initial.medecin});
   command(process.execPath, ['src/db/migrate.ts']);
@@ -164,6 +169,65 @@ test('admin reset replaces the saved password, revokes sessions and survives sta
   await login('animatrice', personal);
   expect((await getPool().query("SELECT detail FROM tf_audit WHERE action='account.updated' ORDER BY at LIMIT 1")).rows[0].detail.password_reset).toBe(true);
 });
+
+test('short passwords work for account creation, admin resets and personal changes', async () => {
+  const admin = await login('direction');
+  const id = randomUUID();
+  await post({action:'user', id, username:'short-password-test', label:'Compte de test', role:'field', active:true, password:'a'}, admin);
+  const created = await post({action:'login', username:'short-password-test', password:'a'});
+  expect(created.data.user.id).toBe(id);
+  await post(update('b'), admin);
+  const field = await login('animatrice', 'b');
+  await post({action:'password', current:'b', next:'c'}, field);
+  expect((await auth.current(await login('animatrice', 'c'))).force_change).toBe(0);
+  expect((await post({action:'user-password', id:fieldId, adminPassword:initial.direction}, admin)).data.password).toBe('c');
+  await post({action:'password', current:initial.direction, next:'d'}, admin);
+  expect((await auth.current(await login('direction', 'd'))).role).toBe('admin');
+});
+
+test('passwords must still be non-empty', async () => {
+  const admin = await login('direction');
+  const field = await login('animatrice');
+  await expect(post({...update(), password:''}, admin)).rejects.toMatchObject({name:'ZodError'});
+  await expect(post({action:'password', current:initial.animatrice, next:''}, field)).rejects.toMatchObject({name:'ZodError'});
+});
+
+test('mission and field-note photo uploads store 20 MB images and reject larger files', async () => {
+  const admin = await auth.current(await login('direction'));
+  const storage = new StorageService();
+  const photos = new PhotosService(storage);
+  const missionId = randomUUID(), noteId = randomUUID();
+  const storeId = 'aaaaaaa1-0000-4000-8000-000000000001';
+  const now = new Date().toISOString();
+  await getPool().query(`INSERT INTO tf_missions(id,store_id,field_id,day,start_at,end_at,brands,status,created_by,updated_at)
+    VALUES($1,$2,$3,'2026-11-16','2026-11-16T08:00:00.000Z','2026-11-16T10:00:00.000Z','["TOUCHE"]','ongoing',$4,$5)`, [missionId,storeId,fieldId,admin.id,now]);
+  await getPool().query(`INSERT INTO tf_field_notes(id,author_id,category,description,created_at,updated_at)
+    VALUES($1,$2,'shelf','Upload boundary test',$3,$3)`, [noteId,admin.id,now]);
+  async function uploadRequest(kind: 'mission'|'note', bytes: number) {
+    const data = new Uint8Array(bytes); data.set([255,216,255]);
+    const form = new FormData();
+    form.set(kind==='mission'?'mission_id':'note_id', kind==='mission'?missionId:noteId);
+    form.set('photo_id',randomUUID()); form.set('no_person','true');
+    form.set('photo',new File([data],'boundary.jpg',{type:'image/jpeg'}));
+    const body = new Response(form);
+    const contentType = body.headers.get('content-type');
+    const stream = Readable.from([Buffer.from(await body.arrayBuffer())]) as any;
+    stream.headers={'content-type':contentType};
+    return stream;
+  }
+  for (const kind of ['mission','note'] as const) {
+    const upload = kind==='mission' ? photos.uploadPhoto.bind(photos) : photos.uploadFieldMedia.bind(photos);
+    const saved = await upload(admin,await uploadRequest(kind,PHOTO_MAX_BYTES));
+    expect(saved.ok).toBe(true);
+    const table = kind==='mission' ? 'tf_photos' : 'tf_field_photos';
+    const stored = (await getPool().query(`SELECT size,object_key FROM ${table} WHERE id=$1`,[saved.id])).rows[0];
+    expect(stored.size).toBe(PHOTO_MAX_BYTES);
+    const content = await storage.get(stored.object_key);
+    let size=0; for await (const chunk of content!) size+=chunk.length;
+    expect(size).toBe(PHOTO_MAX_BYTES);
+    await expect(upload(admin,await uploadRequest(kind,PHOTO_MAX_BYTES+1))).rejects.toMatchObject({status:413});
+  }
+},30000);
 
 test('startup preserves deactivation and admin-required password changes', async () => {
   const admin = await login('direction');

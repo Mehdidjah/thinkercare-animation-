@@ -114,6 +114,8 @@ return <Dialog
     }
     }}/></label>
 
+   <small>JPEG, PNG ou WebP · 20 Mo maximum par photo.</small>
+
    {photos.length>0&&<>
     <ul className="photo-files">
      {photos.map(p=><li key={p.id}>
@@ -277,9 +279,10 @@ return <Dialog
        const f=e.target.files?.[0];
       if(f) { try {setPhoto(selectPhotos([f],1)[0]);setErr('')} catch(error) {setPhoto(null);setErr((error as Error).message)} }else{
         setPhoto(null);
-       setErr('Photo de 15 Mo maximum.')
+       setErr('Choisissez une photo de 20 Mo maximum.')
        }
       }}/>
+      <small>JPEG, PNG ou WebP · 20 Mo maximum par photo.</small>
       <label className="check"><input type="checkbox" required/>Photo du lieu sans personnes ni documents personnels.</label>
       <button className="outline" disabled={busy||!photo}>Ajouter la photo</button></form></details>}
 

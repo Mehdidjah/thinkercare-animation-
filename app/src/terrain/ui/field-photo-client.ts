@@ -1,26 +1,23 @@
 import {compress} from './QuickTools';
+import {PHOTO_MAX_BYTES, validatePhoto} from './photo-file';
 
 export interface PickedPhoto {
   id: string;
   file: File;
 }
 
-const allowedTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
-
 export function selectPhotos(files: File[], remaining = 5): PickedPhoto[] {
   if (files.length > remaining) {
     throw new Error('Cinq photos maximum par observation.');
   }
-  if (files.some(file => file.size > 15_000_000 || file.size === 0 || !allowedTypes.has(file.type))) {
-    throw new Error('Choisissez une photo JPEG, PNG ou WebP de 15 Mo maximum.');
-  }
+  files.forEach(validatePhoto);
   return files.map(file => ({id: crypto.randomUUID(), file}));
 }
 
 export async function sendFieldPhoto(noteId: string, selected: PickedPhoto): Promise<void> {
   selectPhotos([selected.file], 1);
   const file = await compress(selected.file);
-  if (!file.size || file.size > 5_000_000) {
+  if (!file.size || file.size > PHOTO_MAX_BYTES) {
     throw new Error('La photo reste trop volumineuse. Choisissez une image plus petite.');
   }
   const body = new FormData();

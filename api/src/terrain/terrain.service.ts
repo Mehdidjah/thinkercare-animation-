@@ -236,7 +236,7 @@ export class TerrainService {
           label: text(80).min(2),
           role: z.enum(['manager', 'field', 'doctor']),
           active: z.boolean(),
-          password: z.string().min(14).max(200).optional(),
+          password: z.string().min(1).max(200).optional(),
         })
         .strict()
         .parse(b);

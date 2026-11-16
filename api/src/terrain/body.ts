@@ -1,7 +1,6 @@
 import type {Request} from 'express';
 import {fail} from '../common/errors';
-
-const PHOTO_BODY_LIMIT = 5_300_000;
+import {PHOTO_BODY_LIMIT} from './photo-limits';
 
 /**
  * Port of body.server.ts — reads the multipart body off the raw Express request

@@ -14,7 +14,7 @@ Le cahier des charges est le texte de la gestionnaire transmis par le propriéta
 L’administrateur valide l’identité et le rôle professionnel avant de créer les comptes. Un rôle n’est pas changé sur un compte existant : désactiver puis créer un compte distinct. Les permissions sont appliquées côté serveur, y compris pour les photos. Les pouvoirs techniques d’administration de l’hébergement restent distincts des permissions applicatives.
 
 ## Démarrage
-1. Se connecter à `direction` avec le mot de passe initial transmis séparément. Le remplacer immédiatement (14 caractères minimum).
+1. Se connecter à `direction` avec le mot de passe initial transmis séparément. Le remplacer immédiatement.
 2. Créer un compte nominatif pour la gestionnaire, chaque animatrice et chaque médecin.
 3. Ajouter les pharmacies / cosmétiques / grossistes et adresses réelles.
 4. Ajouter les identifiants des appareils Dermoscan.
@@ -52,7 +52,7 @@ La vue pharmacie affiche le dernier stock final compté par référence avec la 
 - Rapports par date de l’animation, personne, pharmacie, marque et produit. Quantités / montants déclarés, jamais chiffres encaissés ni marge.
 
 ## Photos et réclamations
-- Photos de produits/rayons/installations seulement. Pas de personnes, pièces d’identité, prescriptions ni résultats Dermoscan. Le client convertit l’image en JPEG redimensionné, sans métadonnées EXIF d’origine ; le serveur valide le format binaire, taille maximale 5 Mo, accès privé R2.
+- Photos de produits/rayons/installations seulement. Pas de personnes, pièces d’identité, prescriptions ni résultats Dermoscan. Le client convertit l’image en JPEG redimensionné, sans métadonnées EXIF d’origine ; le serveur valide le format binaire, taille maximale 20 Mo, accès privé R2.
 - Photos d’arrivée et de départ, plus jusqu’à 15 photos de suivi par animation. Aucun lien de bucket public. La suppression/rétention automatique n’est pas encore implémentée : prévoir une procédure administrateur avant utilisation à grande échelle.
 - Réclamation : qualité, commercial ou tolérance ; produit, lot, code anonyme et faits. Accord explicite demandé pour la transmission anonymisée d’un signalement de tolérance.
 - Les notes privées ne sont visibles qu’aux comptes médecins. Le retour opérationnel doit rester sans détail médical. Les médecins voient les dossiers du service, pas uniquement ceux déjà attribués.
