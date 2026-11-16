@@ -43,11 +43,20 @@ export class AuthService {
     return u!;
   }
 
-  /** Origin/CSRF check on POST. APP_ORIGIN pins the canonical origin on Railway. */
+  /**
+   * Origin/CSRF check on POST. The app's own origin (same host) is always
+   * allowed. APP_ORIGIN may list additional allowed origins (comma-separated)
+   * — e.g. a Vercel front end that reaches this API through its /api
+   * reverse-proxy, whose browser Origin header is the Vercel domain.
+   */
   requireOrigin(req: Request): void {
     const origin = req.headers.origin;
-    const expected = process.env.APP_ORIGIN || `${req.protocol}://${req.get('host')}`;
-    if (origin !== expected) fail('Origine non autorisée.', 403);
+    const allowed = new Set<string>([`${req.protocol}://${req.get('host')}`]);
+    for (const o of (process.env.APP_ORIGIN || '').split(',')) {
+      const trimmed = o.trim();
+      if (trimmed) allowed.add(trimmed);
+    }
+    if (!origin || !allowed.has(origin)) fail('Origine non autorisée.', 403);
   }
 
   /** Throttle bucket IP — first X-Forwarded-For hop (design §9.1.2), trust proxy enabled. */
