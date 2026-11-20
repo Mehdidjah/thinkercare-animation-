@@ -29,6 +29,12 @@ function sniff(bytes: Uint8Array): string | null {
 
 const THUMB = '.thumb';
 
+/** Photos that document the visit (not a clock step): editable mission only, each kind with its own cap. */
+const KEPT: Partial<Record<string, {max: number; full: string}>> = {
+  report: {max: 15, full: '15 photos de suivi maximum par animation.'},
+  presentoir: {max: 10, full: '10 photos du présentoir maximum par animation.'},
+};
+
 /**
  * The optional grid thumbnail the app sends with a photo (a small JPEG, see
  * app photo-file.ts). Anything else is ignored: the grid then shows the photo.
@@ -49,9 +55,10 @@ export class PhotosService {
     const form = await photoFormData(req);
     const file = photoFile(form.get('photo'));
     const key = uuid.parse(form.get('mission_id'));
-    const purpose = z.enum(['report', 'checkin', 'midway', 'checkout']).parse(form.get('purpose') || 'report');
+    const purpose = z.enum(['report', 'presentoir', 'checkin', 'midway', 'checkout']).parse(form.get('purpose') || 'report');
     const photo = uuid.parse(form.get('photo_id') || randomUUID());
     const m = await mission(db(), u, key);
+    const kept = KEPT[purpose];
 
     const old = await first<any>(db(), sql`SELECT mission_id,user_id,purpose FROM tf_photos WHERE id=${photo}`);
     if (old) {
@@ -59,7 +66,7 @@ export class PhotosService {
         fail('Identifiant photo déjà utilisé.', 409);
       return {ok: true, id: photo, duplicate: true};
     }
-    if (purpose === 'report') {
+    if (kept) {
       if (!canEdit(u, m)) fail('Cette animation est verrouillée.', 409);
     } else {
       const issue = clockIssue(u, m, purpose);
@@ -81,8 +88,10 @@ export class PhotosService {
     const mime = sniff(bytes);
     if (!mime) fail('Format image non reconnu.');
     const small = await thumbnail(form.get('thumb'));
-    const n = await first<any>(db(), sql`SELECT COUNT(*) AS n FROM tf_photos WHERE mission_id=${m.id} AND purpose='report'`);
-    if (purpose === 'report' && n.n >= 15) fail('15 photos de suivi maximum par animation.');
+    if (kept) {
+      const n = await first<any>(db(), sql`SELECT COUNT(*) AS n FROM tf_photos WHERE mission_id=${m.id} AND purpose=${purpose}`);
+      if (n.n >= kept.max) fail(kept.full);
+    }
 
     if (!this.storage.configured()) fail('Stockage photo indisponible.', 503);
     const objectKey = 'terrain/' + randomUUID();
@@ -100,7 +109,7 @@ export class PhotosService {
         writes.push(sql`UPDATE tf_missions SET midway_at=${at},midway_photo_id=${photo} WHERE id=${m.id} AND status='ongoing' AND midway_at IS NULL`);
       if (purpose === 'checkout')
         writes.push(sql`UPDATE tf_missions SET status='completed',actual_end=${at},end_photo_id=${photo} WHERE id=${m.id}`);
-      await batchMission(u, m, purpose === 'report' ? 'photo.added' : 'clock.' + purpose, writes, {photo, purpose});
+      await batchMission(u, m, kept ? 'photo.added' : 'clock.' + purpose, writes, {photo, purpose});
     } catch (e) {
       await this.storage.delete(objectKey);
       if (small) await this.storage.delete(objectKey + THUMB);
