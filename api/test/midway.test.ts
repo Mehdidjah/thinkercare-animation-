@@ -38,6 +38,8 @@ const q = (s: string) => new URLSearchParams(s);
 const today = dayInAlger();
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60000).toISOString();
 const at = (day: string, hm: string) => new Date(`${day}T${hm}:00+01:00`).toISOString();
+// Ends every departure refusal: an app opened before the deploy has no middle-photo button until reloaded.
+const reload = ' Si le bouton n’apparaît pas, rechargez l’application.';
 const row = async (id: string) => (await pool().query('SELECT * FROM tf_missions WHERE id=$1', [id])).rows[0];
 const stored = () => (existsSync(join(storage, 'terrain')) ? readdirSync(join(storage, 'terrain')).length : 0);
 
@@ -142,7 +144,7 @@ test('before the midpoint, the middle photo and the departure are refused with t
   const unlock = clock(midwayTime(m));
   const before = stored();
   expect(await failure(upload(worker, {mission_id: id, purpose: 'midway'}))).toEqual({status: 409, body: {error: `La photo du milieu sera disponible à ${unlock}.`}});
-  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: `Prenez d’abord la photo du milieu (disponible à ${unlock}).`}});
+  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: `Prenez d’abord la photo du milieu (disponible à ${unlock}).` + reload}});
   expect(stored()).toBe(before);
   expect((await pool().query('SELECT count(*)::int AS n FROM tf_photos WHERE mission_id=$1', [id])).rows[0].n).toBe(0);
   expect(await row(id)).toMatchObject({status: 'ongoing', midway_at: null, midway_photo_id: null, actual_end: null, version: m.version});
@@ -152,7 +154,7 @@ test('after the midpoint: the middle photo is recorded once (idempotent retry), 
   const worker = await fieldUser();
   // Planned 4 h ago for 6 h: unlocked an hour ago. A mission started before the deploy has no middle photo yet.
   const id = await addMission({field: worker.id, start: -240, end: 120});
-  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: 'Prenez d’abord la photo du milieu.'}});
+  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: 'Prenez d’abord la photo du milieu.' + reload}});
   expect(await failure(upload(worker, {mission_id: id, purpose: 'midway', no_person: 'false'}))).toEqual({status: 400, body: {error: 'Confirmez une photo du lieu sans personnes ni documents personnels.'}});
   const version = (await row(id)).version;
   const before = stored();
@@ -203,7 +205,7 @@ test('an arrival after the midpoint can take the middle photo at once, then leav
   const id = await addMission({field: worker.id, start: -360, end: 60, status: 'planned', actualStart: null});
   await upload(worker, {mission_id: id, purpose: 'checkin'});
   expect((await row(id)).status).toBe('ongoing');
-  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: 'Prenez d’abord la photo du milieu.'}});
+  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: 'Prenez d’abord la photo du milieu.' + reload}});
   expect((await upload(worker, {mission_id: id, purpose: 'midway'})).ok).toBe(true);
   expect((await upload(worker, {mission_id: id, purpose: 'checkout'})).ok).toBe(true);
   const m = await row(id);
@@ -217,10 +219,36 @@ test('a manager closes a mission without a middle photo', async () => {
   const id = randomUUID();
   await pool().query(`INSERT INTO tf_missions(id,store_id,field_id,day,start_at,end_at,brands,status,actual_start,created_by,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,'["TOUCHE"]','ongoing',$7,$8,$9)`, [id, storeId, worker.id, day, at(day, '09:00'), at(day, '17:00'), at(day, '09:05'), manager.id, new Date().toISOString()]);
-  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: 'Prenez d’abord la photo du milieu.'}});
+  expect(await failure(upload(worker, {mission_id: id, purpose: 'checkout'}))).toEqual({status: 409, body: {error: 'Prenez d’abord la photo du milieu.' + reload}});
   expect(await terrain.postTerrain(manager, {action: 'close-mission', id, end: '17:00', reason: 'Départ confirmé par la pharmacie'})).toEqual({ok: true});
   expect(await row(id)).toMatchObject({status: 'completed', actual_end: at(day, '17:00'), midway_at: null, midway_photo_id: null});
   expect(await failure(upload(worker, {mission_id: id, purpose: 'midway'}))).toEqual({status: 409, body: {error: 'Pointez votre arrivée avant la photo du milieu.'}});
+});
+
+test('a manager’s departure time must follow the middle photo when there is one', async () => {
+  const worker = await fieldUser();
+  const day = shiftDay(today, -1);
+  const insert = async (status: string, end: string | null) => {
+    const id = randomUUID();
+    await pool().query(`INSERT INTO tf_missions(id,store_id,field_id,day,start_at,end_at,brands,status,actual_start,actual_end,midway_at,midway_photo_id,created_by,updated_at)
+      VALUES($1,$2,$3,$4,$5,$6,'["TOUCHE"]',$7,$8,$9,$10,$11,$12,$13)`,
+    [id, storeId, worker.id, day, at(day, '09:00'), at(day, '17:00'), status, at(day, '09:05'), end, at(day, '13:02'), randomUUID(), manager.id, new Date().toISOString()]);
+    return id;
+  };
+  const close = (id: string, end: string) => terrain.postTerrain(manager, {action: 'close-mission', id, end, reason: 'Départ confirmé par la pharmacie'});
+  const refused = {status: 400, body: {error: 'L’heure de départ doit suivre la photo du milieu (13:02).'}};
+  // Correcting a completed mission: never before the middle photo.
+  const completed = await insert('completed', at(day, '17:00'));
+  for (const end of ['10:00', '13:02']) expect(await failure(close(completed, end))).toEqual(refused);
+  expect(await row(completed)).toMatchObject({actual_end: at(day, '17:00')});
+  expect(await close(completed, '13:03')).toEqual({ok: true});
+  expect(await row(completed)).toMatchObject({status: 'completed', actual_end: at(day, '13:03'), midway_at: at(day, '13:02')});
+  // Closing an ongoing mission that has its middle photo.
+  const ongoing = await insert('ongoing', null);
+  expect(await failure(close(ongoing, '11:00'))).toEqual(refused);
+  expect(await row(ongoing)).toMatchObject({status: 'ongoing', actual_end: null});
+  expect(await close(ongoing, '16:30')).toEqual({ok: true});
+  expect(await row(ongoing)).toMatchObject({status: 'completed', actual_end: at(day, '16:30')});
 });
 
 test('migration 0003 applies on a database already at 0002 with data, and ongoing missions then need the middle photo', async () => {
@@ -261,7 +289,7 @@ test('migration 0003 applies on a database already at 0002 with data, and ongoin
     const kept = await before.query(`SELECT (SELECT count(*) FROM tf_photos)::int AS p,(SELECT count(*) FROM tf_audit)::int AS a,(SELECT count(*) FROM tf_users)::int AS u`);
     expect(kept.rows[0]).toEqual({p: 3, a: 1, u: 1});
     // The mission already in progress at the deploy: departure only after the middle photo.
-    expect(clockIssue({id: 'u1', role: 'field'}, missions[0], 'checkout')).toBe('Prenez d’abord la photo du milieu.');
+    expect(clockIssue({id: 'u1', role: 'field'}, missions[0], 'checkout')).toBe('Prenez d’abord la photo du milieu.' + reload);
     expect(clockIssue({id: 'u1', role: 'field'}, missions[0], 'midway')).toBeNull();
     await before.query("UPDATE tf_missions SET midway_at='2026-11-01T12:00:00.000Z',midway_photo_id='p4' WHERE id='m1'");
     expect(clockIssue({id: 'u1', role: 'field'}, (await before.query("SELECT * FROM tf_missions WHERE id='m1'")).rows[0], 'checkout')).toBeNull();

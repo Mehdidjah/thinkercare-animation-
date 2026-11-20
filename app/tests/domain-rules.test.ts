@@ -79,11 +79,18 @@ test('middle photo: halfway through the planned slot, once, before the departure
   // Planned 09:00–17:00 Alger: the middle photo unlocks at 13:00 Alger.
   const m = {id: 'm1', field_id: 'f1', day: '2026-11-14', start_at: '2026-11-14T08:00:00.000Z', end_at: '2026-11-14T16:00:00.000Z',
     status: 'ongoing', actual_start: '2026-11-14T08:02:00.000Z', midway_at: null, late_grace_minutes: 15};
-  const later = '2026-11-14T14:00:00.000Z', done = {...m, midway_at: '2026-11-14T12:05:00.000Z'};
+  const later = '2026-11-14T14:00:00.000Z', done = {...m, midway_at: '2026-11-14T12:05:00.000Z'}, reload = ' Si le bouton n’apparaît pas, rechargez l’application.';
   expect(c.midwayTime(m)).toBe('2026-11-14T12:00:00.000Z');
   expect(c.clock(c.midwayTime(m))).toBe('13:00');
-  expect(c.midwayTime({start_at: '2026-11-14T08:00:00.000Z', end_at: '2026-11-14T08:45:00.000Z'})).toBe('2026-11-14T08:22:30.000Z');
+  expect(c.midwayTime({start_at: '2026-11-14T08:00:00.000Z', end_at: '2026-11-14T08:45:00.000Z'})).toBe('2026-11-14T08:23:00.000Z');
   expect(c.midwayTime({start_at: '2026-11-14T21:00:00.000Z', end_at: '2026-11-15T03:00:00.000Z'})).toBe('2026-11-15T00:00:00.000Z');
+  // An odd number of minutes (09:00–16:15): rounded up to the minute shown, so 12:38 is never refused as too early.
+  const odd = {...m, end_at: '2026-11-14T15:15:00.000Z'};
+  expect(c.midwayTime(odd)).toBe('2026-11-14T11:38:00.000Z');
+  expect(c.clock(c.midwayTime(odd))).toBe('12:38');
+  expect(c.clockIssue(field as any, odd, 'midway', '2026-11-14T11:37:45.000Z')).toBe('La photo du milieu sera disponible à 12:38.');
+  expect(c.clockIssue(field as any, odd, 'checkout', '2026-11-14T11:37:45.000Z')).toBe('Prenez d’abord la photo du milieu (disponible à 12:38).' + reload);
+  expect(c.clockIssue(field as any, odd, 'midway', '2026-11-14T11:38:00.000Z')).toBeNull();
   // Too early, then open from the unlock minute on.
   expect(c.clockIssue(field as any, m, 'midway', '2026-11-14T11:59:59.000Z')).toBe('La photo du milieu sera disponible à 13:00.');
   for (const now of ['2026-11-14T12:00:00.000Z', later, '2026-11-14T18:00:00.000Z']) expect(c.clockIssue(field as any, m, 'midway', now)).toBeNull();
@@ -96,15 +103,15 @@ test('middle photo: halfway through the planned slot, once, before the departure
   expect(c.clockIssue(field as any, done, 'midway', later)).toBe('La photo du milieu est déjà enregistrée.');
   expect(c.clockIssue(field as any, {...done, status: 'completed'}, 'midway', later)).toBe('La photo du milieu est déjà enregistrée.');
   // The departure waits for the middle photo, with the unlock time while it is still ahead.
-  expect(c.clockIssue(field as any, m, 'checkout', '2026-11-14T10:00:00.000Z')).toBe('Prenez d’abord la photo du milieu (disponible à 13:00).');
-  expect(c.clockIssue(field as any, m, 'checkout', later)).toBe('Prenez d’abord la photo du milieu.');
+  expect(c.clockIssue(field as any, m, 'checkout', '2026-11-14T10:00:00.000Z')).toBe('Prenez d’abord la photo du milieu (disponible à 13:00).' + reload);
+  expect(c.clockIssue(field as any, m, 'checkout', later)).toBe('Prenez d’abord la photo du milieu.' + reload);
   expect(c.clockIssue(field as any, done, 'checkout', '2026-11-14T12:06:00.000Z')).toBeNull();
   expect(c.clockIssue(other as any, done, 'checkout', later)).toBe('Le pointage appartient à l’animatrice assignée.');
   expect(c.clockIssue(field as any, {...done, status: 'completed', actual_end: later}, 'checkout', later)).toBe('Pointez votre arrivée avant votre départ.');
   // Arrival after the midpoint: the middle photo is available at once.
   const late = {...m, actual_start: '2026-11-14T14:10:00.000Z'};
   expect(c.clockIssue(field as any, late, 'midway', '2026-11-14T14:10:05.000Z')).toBeNull();
-  expect(c.clockIssue(field as any, late, 'checkout', '2026-11-14T14:10:05.000Z')).toBe('Prenez d’abord la photo du milieu.');
+  expect(c.clockIssue(field as any, late, 'checkout', '2026-11-14T14:10:05.000Z')).toBe('Prenez d’abord la photo du milieu.' + reload);
   expect(c.clockIssue(field as any, m, 'lunch', later)).toBe('Type de pointage invalide.');
   // No new attendance alert for a missing middle photo.
   expect(c.attendance(m, '2026-11-14T15:00:00.000Z')).toBeNull();

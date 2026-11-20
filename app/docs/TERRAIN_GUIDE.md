@@ -34,13 +34,13 @@ L’administrateur valide l’identité et le rôle professionnel avant de crée
 - **Milieu** : une photo du lieu à mi-parcours du créneau prévu, par exemple dès 13:00 pour 09:00–17:00 (heure d’Alger).
   - Mêmes règles que la photo d’arrivée, une seule par animation. Arrivée après ce moment : la photo est disponible tout de suite.
   - Avant l’heure, le bouton affiche « Photo du milieu · dès 13:00 » et s’active seul, sans recharger.
-- **Fin** : après la photo du milieu, avec une nouvelle photo. « Pointer mon départ » reste bloqué jusque-là, y compris pour une animation déjà en cours lors de la mise à jour.
+- **Fin** : après la photo du milieu, avec une nouvelle photo. « Pointer mon départ » reste bloqué jusque-là, y compris pour une animation déjà en cours lors de la mise à jour. Une application ouverte avant la mise à jour n’affiche pas encore le bouton de la photo du milieu : la recharger, comme l’indique le message de refus du départ.
 - Photo et horaire sont enregistrés ensemble : un envoi échoué ne valide pas le pointage. L’heure réelle est celle du serveur.
 - **Rôle de la gestionnaire** : elle ne pointe pas l’arrivée à la place de l’animatrice. Depuis la fiche de l’animation, elle peut en revanche :
   - « Clôturer le départ » d’une animation restée en cours, même sans photo du milieu ;
   - « Corriger l’heure de départ » d’une animation terminée.
 
-  L’heure doit être postérieure à l’arrivée et pas dans le futur. Le motif est obligatoire et l’opération est tracée.
+  L’heure doit suivre l’arrivée (et la photo du milieu si elle a été prise), sans être dans le futur. Le motif est obligatoire et l’opération est tracée.
 - **Tolérance de retard** : réglable par animation, de 0 à 120 minutes (15 par défaut).
 - **Alertes de présence** : la direction et la gestionnaire voient :
   - les arrivées non pointées et les arrivées tardives des huit derniers jours ;

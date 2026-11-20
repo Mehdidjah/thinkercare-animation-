@@ -7,7 +7,7 @@ import {hashNewPassword} from '../common/crypto';
 import {sealPassword} from '../common/password-vault';
 import {id, uuid, brand, text, date, qty} from '../common/validation';
 import {mission, sales, counts, parseMission, range, auditSql, batchMission, changes} from './helpers';
-import {manages, dayInAlger, shiftDay, weekStart, attendance, reportIssues, ticketTotal, soldBy, type User} from '../domain/core';
+import {manages, dayInAlger, shiftDay, weekStart, attendance, reportIssues, ticketTotal, soldBy, clock, type User} from '../domain/core';
 import {OperationsService} from './operations.service';
 import type {SQL} from 'drizzle-orm';
 
@@ -462,6 +462,7 @@ export class TerrainService {
       // Same Alger-time conversion as scheduling: the departure is on the mission day.
       const end = new Date(m.day + 'T' + v.end + ':00+01:00').toISOString();
       if (!m.actual_start || Date.parse(end) <= Date.parse(m.actual_start)) fail('L’heure de départ doit suivre l’heure d’arrivée pointée.');
+      if (m.midway_at && Date.parse(end) <= Date.parse(m.midway_at)) fail('L’heure de départ doit suivre la photo du milieu (' + clock(m.midway_at) + ').');
       if (Date.parse(end) > Date.now()) fail('L’heure de départ ne peut pas être dans le futur.');
       await batchMission(
         u,

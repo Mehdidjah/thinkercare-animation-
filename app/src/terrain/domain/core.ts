@@ -31,8 +31,8 @@ export function attendance(m:any,now:string|number=new Date().toISOString()):{ki
  if(!m.actual_start&&m.status!=='planned')return null;
  return {kind:m.actual_start?'late_start':'missing_start',minutes:Math.floor((actual-start)/60000)};
 }
-/** The middle photo unlocks halfway through the planned slot (a late arrival past it may take it at once). */
-export function midwayTime(m:{start_at:string;end_at:string}){const start=Date.parse(m.start_at);return new Date(start+(Date.parse(m.end_at)-start)/2).toISOString();}
+/** The middle photo unlocks halfway through the planned slot, rounded up to the minute so the HH:MM shown is the real unlock (a late arrival past it may take it at once). */
+export function midwayTime(m:{start_at:string;end_at:string}){const start=Date.parse(m.start_at);return new Date(Math.ceil((start+(Date.parse(m.end_at)-start)/2)/60000)*60000).toISOString();}
 export function clockIssue(u:Pick<User,'id'|'role'>,m:any,purpose:string,now:string|number=new Date().toISOString()):string|null {
  if(u.role!=='field'||u.id!==m.field_id)return 'Le pointage appartient à l’animatrice assignée.';
  if(purpose==='checkin')return m.status!=='planned'||m.day!==dayInAlger(now)?'L’arrivée se pointe le jour prévu, une seule fois par animation.':null;
@@ -42,6 +42,7 @@ export function clockIssue(u:Pick<User,'id'|'role'>,m:any,purpose:string,now:str
  if(m.midway_at)return null;
  const at=midwayTime(m),early=Date.parse(at)>new Date(now).getTime();
  if(purpose==='midway')return early?'La photo du milieu sera disponible à '+clock(at)+'.':null;
- return early?'Prenez d’abord la photo du milieu (disponible à '+clock(at)+').':'Prenez d’abord la photo du milieu.';
+ // Only an app opened before the middle photo existed lets her try this: tell her how to get the button.
+ return 'Prenez d’abord la photo du milieu'+(early?' (disponible à '+clock(at)+')':'')+'. Si le bouton n’apparaît pas, rechargez l’application.';
 }
 export const delayLabel=(minutes:number)=>minutes>=60?Math.floor(minutes/60)+' h'+(minutes%60?' '+minutes%60+' min':''):minutes+' min';

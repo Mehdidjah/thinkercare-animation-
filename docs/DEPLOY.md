@@ -85,6 +85,14 @@ Ne jamais modifier une migration déjà appliquée. Les règles d’intégrité 
 
 Le service a un volume attaché. Railway ne fait donc jamais tourner deux déploiements en même temps : l’ancien s’arrête avant que le nouveau démarre. Chaque déploiement provoque ainsi une **courte coupure**, le temps du démarrage, des migrations et du healthcheck. Éviter de déployer aux heures de pointage, en début et en fin d’animation. Les sessions sont en base : un déploiement ne déconnecte personne.
 
+**Interface et API ne changent pas au même instant.** Vercel publie la SPA en une minute environ, Railway reconstruit l’image en plusieurs minutes, et un onglet déjà ouvert garde l’ancienne interface jusqu’à son rechargement : rien ne le recharge seul. Pour un changement qui touche les deux, comme la photo du milieu :
+
+1. déployer hors des heures de pointage ;
+2. attendre la fin des deux déploiements (Railway : healthcheck au vert ; Vercel : « Ready ») ;
+3. demander aux animatrices de recharger l’application (fermer puis rouvrir l’onglet).
+
+Pendant l’écart, la nouvelle interface face à l’ancienne API garde le pointage arrivée → départ, sans photo du milieu. Une interface ouverte avant le déploiement n’a pas le bouton de la photo du milieu : le refus du départ lui demande de recharger l’application.
+
 ## 5. Volume photos
 
 - **Taille** : 50 Go montés sur `/data`, dont environ 792 Mo utilisés au 20 novembre 2026.
