@@ -32,7 +32,7 @@ return <Dialog
   setBusy(true);
   setErr('');
   try{
-    await request('',{action:'service-create',id:key,mission_id:missionId,store_id:store||null,store_label:v.store_label||'',kind,reasons:picked,channel:v.channel,product_id:v.product_id||null,lot:v.lot||'',code:v.code||'',priority:v.priority||'normal',description:v.description,consent:v.consent==='on',due_day:v.due_day||''});
+    await request('',{action:'service-create',id:key,mission_id:missionId,store_id:store||null,store_label:v.store_label||'',kind,...(picked.length===1?{reason:picked[0]}:{reasons:picked}),channel:v.channel,product_id:v.product_id||null,lot:v.lot||'',code:v.code||'',priority:v.priority||'normal',description:v.description,consent:v.consent==='on',due_day:v.due_day||''});
    done()
    }catch(e){
     setErr((e as Error).message)
@@ -49,7 +49,9 @@ return <Dialog
       type="button"
       key={k}
       className={kind===k?'selected':''}
+      aria-pressed={kind===k}
       onClick={()=>{
+     if(k===kind)return;
      setKind(k);
     setPicked([])
     }}>

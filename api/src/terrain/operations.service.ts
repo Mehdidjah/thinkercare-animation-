@@ -167,7 +167,7 @@ export class OperationsService {
           ...contextSchema,
           kind: z.enum(['complaint', 'request']),
           reasons: z.array(txt(40)).optional(),
-          // An app opened before multiple reasons sends a single one.
+          // Single pick, and apps older than multiple reasons: the previous API only accepts `reason`.
           reason: txt(40).optional(),
           channel: z.enum(['onsite', 'phone', 'whatsapp', 'email', 'other']),
           product_id: id.nullable(),

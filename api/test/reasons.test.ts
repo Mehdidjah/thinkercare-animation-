@@ -193,17 +193,25 @@ test('migration 0004 applies on a database already at 0003 with cases, and backf
         ('c3','u1','request','restock','commercial','Réassort avant la promotion','2026-11-03T08:00:00.000Z','x');
       INSERT INTO tf_case_events(id,case_id,user_id,at,status) VALUES('e1','c1','u1','x','new');`);
     expect(await before.query('SELECT reasons FROM tf_cases').then(() => 'ok', () => 'missing')).toBe('missing');
+    // The second run is a no-op for drizzle, which has recorded 0004.
     for (let run = 0; run < 2; run++) command(process.execPath, ['src/db/migrate.ts'], {DATABASE_URL: url});
+    const column = async (p: Pool) => (await p.query(`SELECT column_name,data_type,is_nullable,column_default FROM information_schema.columns
+      WHERE table_name='tf_cases' AND column_name='reasons'`)).rows;
     for (const p of [before, pool()]) {
-      const columns = (await p.query(`SELECT column_name,data_type,is_nullable,column_default FROM information_schema.columns
-        WHERE table_name='tf_cases' AND column_name='reasons'`)).rows;
-      expect(columns).toEqual([{column_name: 'reasons', data_type: 'text', is_nullable: 'NO', column_default: "''::text"}]);
+      expect(await column(p)).toEqual([{column_name: 'reasons', data_type: 'text', is_nullable: 'NO', column_default: "''::text"}]);
       expect((await p.query('SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations')).rows[0].n).toBe(total);
     }
     const rows = (await before.query('SELECT id,kind,reason,reasons,category FROM tf_cases ORDER BY id')).rows;
     expect(rows.map((c) => [c.id, c.reason, c.reasons, c.category])).toEqual([
       ['c1', 'price', 'price', 'commercial'], ['c2', 'tolerance', 'tolerance', 'tolerance'], ['c3', 'restock', 'restock', 'commercial']]);
     expect(rows.map(reasonLabel)).toEqual(['Prix ou promotion', 'Réaction ou problème de tolérance', 'Réassort ou commande']);
+    // The SQL itself is idempotent: run again by hand, it changes neither the column nor any case, one with several reasons included.
+    await before.query(`INSERT INTO tf_cases(id,author_id,kind,reason,reasons,category,description,created_at,updated_at) VALUES('c5','u1','complaint','price','price,tolerance','tolerance','Rougeurs et prix','x','x')`);
+    const state = async () => [await column(before), (await before.query('SELECT id,reason,reasons,category FROM tf_cases ORDER BY id')).rows];
+    const was = await state();
+    expect(was[1]).toContainEqual({id: 'c5', reason: 'price', reasons: 'price,tolerance', category: 'tolerance'});
+    for (const statement of readFileSync(join(root, 'drizzle/0004_multi_reason.sql'), 'utf8').split('--> statement-breakpoint')) await before.query(statement);
+    expect(await state()).toEqual(was);
     const kept = await before.query(`SELECT (SELECT count(*) FROM tf_case_events)::int AS e,(SELECT count(*) FROM tf_users)::int AS u`);
     expect(kept.rows[0]).toEqual({e: 1, u: 1});
     // A row written by an API still on the previous version (no reasons) reads as its single reason.
