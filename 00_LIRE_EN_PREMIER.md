@@ -3,7 +3,7 @@
 Application interne de suivi terrain des marques TOUCHÉ, BELNCO et NOOM, en français, à l’heure d’Alger et en dinars algériens. Elle sert quatre rôles :
 
 - **Gestionnaires** : programment les animations en pharmacie et valident les rapports.
-- **Animatrices** : pointent l’arrivée et le départ avec une photo, relèvent les stocks et saisissent les ventes, les réclamations et les retours terrain.
+- **Animatrices** : pointent l’arrivée, le milieu et le départ avec une photo, relèvent les stocks et saisissent les ventes, les réclamations et les retours terrain.
 - **Médecins** : traitent les réclamations.
 - **Direction** : gère les comptes et la traçabilité.
 

@@ -489,7 +489,8 @@ test('migration 0002 applies on a fresh database and on one already at 0001 with
       const indexes = (await p.query(`SELECT indexname FROM pg_indexes WHERE indexname = ANY($1) ORDER BY indexname`,
         [['tf_audit_at', 'tf_field_photos_note', 'tf_mission_field', 'tf_mission_store', 'tf_photos_mission']])).rows.map((r) => r.indexname);
       expect(indexes).toEqual(['tf_audit_at', 'tf_field_photos_note', 'tf_mission_field', 'tf_mission_store', 'tf_photos_mission']);
-      expect((await p.query('SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations')).rows[0].n).toBe(3);
+      expect((await p.query('SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations')).rows[0].n)
+        .toBe(JSON.parse(readFileSync(join(root, 'drizzle/meta/_journal.json'), 'utf8')).entries.length);
     }
     await before.query("INSERT INTO tf_alert_ack(user_id,mission_id,kind,ack_at) VALUES('u1','m1','missing_end','x')");
     expect(await before.query("INSERT INTO tf_alert_ack(user_id,mission_id,kind,ack_at) VALUES('u1','m1','bogus','x')").then(() => 'ok', () => 'refused')).toBe('refused');

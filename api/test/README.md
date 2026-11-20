@@ -8,6 +8,7 @@ bun run test:passwords      # password workflow, sessions and login throttle
 bun run test:auth           # the above plus password hashing (auth-crypto, no database)
 bun run test:data           # data integrity, attendance, migrations and seed
 bun run test:platform       # HTTP server: headers, caching, photos, upload limiter, /healthz
+bun run test:midway         # middle photo: unlock time, departure lock, retries, migration 0003
 bun run test:uploads        # photo body limits only (no database)
 bun run --bun tsc --noEmit -p tsconfig.json   # typecheck
 ```
@@ -17,6 +18,7 @@ Suites:
 - `passwords.test.ts`: password changes, resets and reveals, sliding session renewal, logout without a valid session (`Clear-Site-Data`), the per-IP and per-username login throttle and the signed known-browser cookie that keeps the real user out of a lockout caused elsewhere, legacy hash upgrade at login, login audit rows.
 - `auth-crypto.test.ts`: hash formats and known-answer vectors (no database).
 - `data.test.ts`: unknown motives, account usernames, strict dates, bootstrap caps and `prefetch` (week, bonus strip, attendance alerts), `missing_end` alerts, `close-mission`, the visits listed when an animatrice is deactivated, unique-violation messages, error logging, an idle connection closed by Postgres (logged, not fatal), seed (manager edits kept, `SEED_DEMO_DATA`), void-sale price restore or removal, set-based stock writes, reports limit, audit window, migration `0002` on a fresh and on an existing database, and the boot trigger script taking no table lock.
+- `midway.test.ts`: the middle photo through the real photo and terrain services: refused before the midpoint with the unlock time, departure refused until it exists (also for missions started before the deploy), one per mission with idempotent `photo_id` retries, assigned animatrice only, readable by the mission’s viewers, available at once after a late arrival, manager `close-mission` without it (and never before it when there is one), and migration `0003` on a database already at `0002` with data.
 - `platform.test.ts`: boots the real `src/main.ts` in a subprocess and checks security headers and the CSP, static `Cache-Control`, JSON compression, the `PUBLIC_APP_URL` redirect, photo caching (`ETag`, `304`) and grid thumbnails, the upload limiter (global and per account) and the cut of stalled or trickling bodies, the check-in pre-check, `/healthz` and JSON 404s.
 - `photo-body.test.ts`: multipart size limits (no database).
 

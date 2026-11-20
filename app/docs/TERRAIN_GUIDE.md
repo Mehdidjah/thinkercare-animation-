@@ -31,19 +31,22 @@ L’administrateur valide l’identité et le rôle professionnel avant de crée
 - Les chevauchements d’horaires sont autorisés, pour une même animatrice comme pour un même appareil. Vérifier le planning avant d’enregistrer.
 - **Début** : le jour prévu, par l’animatrice assignée, avec une photo du lieu.
   - Une animatrice ne peut pas commencer une animation tant qu’une autre est encore en cours. Le message indique laquelle (pharmacie, date) : pointer d’abord son départ.
-- **Fin** : après un début enregistré, avec une nouvelle photo.
+- **Milieu** : une photo du lieu à mi-parcours du créneau prévu, par exemple dès 13:00 pour 09:00–17:00 (heure d’Alger).
+  - Mêmes règles que la photo d’arrivée, une seule par animation. Arrivée après ce moment : la photo est disponible tout de suite.
+  - Avant l’heure, le bouton affiche « Photo du milieu · dès 13:00 » et s’active seul, sans recharger.
+- **Fin** : après la photo du milieu, avec une nouvelle photo. « Pointer mon départ » reste bloqué jusque-là, y compris pour une animation déjà en cours lors de la mise à jour. Une application ouverte avant la mise à jour n’affiche pas encore le bouton de la photo du milieu : la recharger, comme l’indique le message de refus du départ.
 - Photo et horaire sont enregistrés ensemble : un envoi échoué ne valide pas le pointage. L’heure réelle est celle du serveur.
 - **Rôle de la gestionnaire** : elle ne pointe pas l’arrivée à la place de l’animatrice. Depuis la fiche de l’animation, elle peut en revanche :
-  - « Clôturer le départ » d’une animation restée en cours ;
+  - « Clôturer le départ » d’une animation restée en cours, même sans photo du milieu ;
   - « Corriger l’heure de départ » d’une animation terminée.
 
-  L’heure doit être postérieure à l’arrivée et pas dans le futur. Le motif est obligatoire et l’opération est tracée.
+  L’heure doit suivre l’arrivée (et la photo du milieu si elle a été prise), sans être dans le futur. Le motif est obligatoire et l’opération est tracée.
 - **Tolérance de retard** : réglable par animation, de 0 à 120 minutes (15 par défaut).
 - **Alertes de présence** : la direction et la gestionnaire voient :
   - les arrivées non pointées et les arrivées tardives des huit derniers jours ;
   - les départs non pointés (« Départ non pointé »), c’est-à-dire les animations encore en cours après l’heure de fin prévue plus la tolérance, quelle que soit leur ancienneté.
 
-  Les animatrices désactivées sont ignorées. À la désactivation, la direction voit la liste de ses animations encore programmées ou en cours, à réaffecter, annuler ou clôturer ; dans le planning, elles portent la mention « compte désactivé ». Une alerte peut être marquée comme vue sans effacer le retard. Exemple : prévu 08:00, arrivée 12:00, retard affiché de 4 h. Les alertes s’affichent dans l’application ouverte, sans SMS, WhatsApp, courriel ni notification système en arrière-plan.
+  Une photo du milieu manquante ne crée pas d’alerte. Les animatrices désactivées sont ignorées. À la désactivation, la direction voit la liste de ses animations encore programmées ou en cours, à réaffecter, annuler ou clôturer ; dans le planning, elles portent la mention « compte désactivé ». Une alerte peut être marquée comme vue sans effacer le retard. Exemple : prévu 08:00, arrivée 12:00, retard affiché de 4 h. Les alertes s’affichent dans l’application ouverte, sans SMS, WhatsApp, courriel ni notification système en arrière-plan.
 - Statut de l’animation : programmée, en cours, terminée, annulée. Une animation déjà commencée n’est pas effacée par une annulation administrative : pointer la fin et préciser l’incident au rapport.
 - **Actualisation** : automatique toutes les 20 secondes quand l’écran est visible. Ce n’est pas une connexion instantanée par WebSocket. L’heure d’actualisation et les erreurs restent visibles.
 - **Session** : elle reste ouverte tant que l’application est utilisée. Si elle expire ou est révoquée, l’application demande de se reconnecter ; les écrans se rechargent ensuite. Se déconnecter dans un onglet déconnecte aussi les autres onglets.
@@ -73,7 +76,7 @@ La vue pharmacie affiche le dernier stock final compté par référence avec la 
 - **Contenu autorisé** : photos de produits, de rayons et d’installations seulement. Pas de personnes, de pièces d’identité, de prescriptions ni de résultats Dermoscan.
 - **Traitement** : le navigateur convertit l’image en JPEG redimensionné, sans les métadonnées EXIF d’origine. Le serveur vérifie le format réel et accepte 20 Mo au maximum.
 - **Stockage** : privé sur le serveur (volume Railway), sans lien public. Chaque photo n’est servie qu’après contrôle des droits, vérifié à chaque affichage même pour une photo déjà vue sur l’appareil. Les grilles affichent une miniature envoyée avec la photo ; la photo entière s’ouvre au clic.
-- **Nombre** : photos d’arrivée et de départ, plus jusqu’à 15 photos de suivi par animation.
+- **Nombre** : photos d’arrivée, du milieu et de départ, plus jusqu’à 15 photos de suivi par animation. L’onglet « Photos & pointages » les étiquette Arrivée, Milieu, Départ et Suivi.
 - **Échec d’envoi** : un nouvel essai réutilise le même identifiant de photo, donc il ne crée pas de doublon. Si trop d’envois sont en cours (ou déjà deux pour ce compte), le serveur demande de réessayer quelques secondes plus tard. Un envoi bloqué par le réseau est interrompu après 20 secondes sans progression (60 secondes au total) : réessayer avec la même photo.
 - **Rétention** : la suppression automatique n’est pas implémentée. Prévoir une procédure administrateur avant une utilisation à grande échelle.
 - Réclamation : qualité, commercial ou tolérance ; produit, lot, code anonyme et faits. Accord explicite demandé pour la transmission anonymisée d’un signalement de tolérance.
@@ -110,7 +113,7 @@ Référentiels : 2 000 produits/points de vente, 1 000 personnes/appareils ; ani
 Tester avec deux animatrices, une gestionnaire et un médecin :
 
 - création du planning et chevauchements ;
-- pointages, avec un départ oublié puis clôturé par la gestionnaire ;
+- pointages (arrivée, milieu, départ), avec un départ oublié puis clôturé par la gestionnaire ;
 - relevés à zéro et non nuls ;
 - ventes et prix ;
 - annulation de saisie ;
