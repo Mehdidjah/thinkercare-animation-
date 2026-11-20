@@ -16,7 +16,7 @@ const uid=()=>crypto.randomUUID();
 
 export function FieldNoteForm({data,missionId=null,storeId='',close,done}:{data:any;missionId?:string|null;storeId?:string;close:()=>void;done:()=>void}){
 
-const [id]=useState(uid),[type,setType]=useState('shelf'),[store,setStore]=useState(storeId),[photos,setPhotos]=useState<Picked[]>([]),[checked,setChecked]=useState(false),[busy,setBusy]=useState(false),[created,setCreated]=useState(false),[err,setErr]=useState('');
+const [id]=useState(uid),[type,setType]=useState('shelf'),[store,setStore]=useState(storeId),[photos,setPhotos]=useState<Picked[]>([]),[sent,setSent]=useState(0),[checked,setChecked]=useState(false),[busy,setBusy]=useState(false),[created,setCreated]=useState(false),[err,setErr]=useState('');
 
 
 return <Dialog
@@ -36,10 +36,21 @@ return <Dialog
     }
 
 
-    for(const p of photos){
-     await sendPhoto(id,p);
-    setPhotos(old=>old.filter(x=>x.id!==p.id))
-    }
+    // Two uploads at a time; each photo keeps its id, so a retry never records it twice.
+    const queue=[...photos],failures:string[]=[];
+    await Promise.all([0,1].map(async()=>{
+     for(let p=queue.shift();p;p=queue.shift()){
+      const photo=p;
+      try{
+        await sendPhoto(id,photo);
+       setSent(n=>n+1);
+       setPhotos(old=>old.filter(x=>x.id!==photo.id))
+       }catch(e){
+        failures.push((e as Error).message)
+       }
+     }
+    }));
+    if(failures.length)throw new Error(failures[0]);
    done();
 
  }catch(e){
@@ -49,7 +60,7 @@ return <Dialog
    }
   }}>
 
-   {created&&<p className="notice">L’observation est enregistrée. Vous pouvez réessayer l’envoi des photos restantes.</p>}
+   {created&&<p className="notice">L’observation est enregistrée. Réessayez l’envoi des photos restantes, remplacez-les ou retirez-les.</p>}
 
    <fieldset disabled={busy||created}>
     <label>Type de retour<select value={type} onChange={e=>setType(e.target.value)}>
@@ -98,20 +109,21 @@ return <Dialog
        {data.products.filter((p:any)=>p.active).map((p:any)=><option key={p.id} value={p.id}>
         {p.name}</option>)}</select></label></details></fieldset>
 
-   <label className="capture-button">Photos du rayon ou de la mise en avant · 5 maximum<input
+   <label className="capture-button">Photos du rayon ou de la mise en avant · 5 maximum{sent>0?' · '+sent+' déjà envoyée(s)':''}<input
       type="file"
       accept="image/jpeg,image/png,image/webp"
       multiple
-      disabled={busy||created}
+      disabled={busy||sent>=5}
       onChange={e=>{
      try {
-      setPhotos(selectPhotos(Array.from(e.target.files || [])));
+      setPhotos(selectPhotos(Array.from(e.target.files || []),5-sent));
       setErr('');
     } catch (error) {
       setPhotos([]);
-      e.target.value = '';
       setErr((error as Error).message);
     }
+    // Lets the same file be chosen again after removing it.
+    e.target.value = '';
     }}/></label>
 
    <small>JPEG, PNG ou WebP · 20 Mo maximum par photo.</small>
@@ -119,7 +131,12 @@ return <Dialog
    {photos.length>0&&<>
     <ul className="photo-files">
      {photos.map(p=><li key={p.id}>
-      {p.file.name}</li>)}</ul>
+      {p.file.name} <button
+        type="button"
+        className="text"
+        disabled={busy}
+        aria-label={'Retirer '+p.file.name}
+        onClick={()=>setPhotos(old=>old.filter(x=>x.id!==p.id))}>Retirer</button></li>)}</ul>
     <label className="check"><input
        type="checkbox"
        checked={checked}
@@ -128,8 +145,8 @@ return <Dialog
 
    {err&&<Warning>
     {err}</Warning>}
-   <button className="primary" disabled={busy||photos.length>0&&!checked}>
-    {busy?'Enregistrement…':created?'Réessayer les photos':'Partager le retour'}</button>
+   <button className="primary" disabled={busy||photos.length>0&&!checked||created&&!photos.length}>
+    {busy?'Enregistrement…':created?'Envoyer les photos':'Partager le retour'}</button>
    {created&&<button
      type="button"
      className="text"
@@ -184,6 +201,7 @@ return <>
       onClick={()=>setSelected(n.id)}>
      {n.photo_id?<img
        loading="lazy"
+       decoding="async"
        src={photoPath(n.photo_id)}
        alt={NOTE_TYPES[n.category]+' · '+n.store_name}/>:<div className="note-photo-empty">
       {NOTE_TYPES[n.category]}</div>}
@@ -250,20 +268,22 @@ return <Dialog
        href={photoPath(p.id)}
        target="_blank"
        rel="noreferrer">
-      <img src={photoPath(p.id)} alt={'Rayon ou produit — '+n.store_name}/></a>)}</div>
+      <img loading="lazy" decoding="async" src={photoPath(p.id)} alt={'Rayon ou produit — '+n.store_name}/></a>)}</div>
 
     {r.data.photos.length<5&&<details className="ops-details">
      <summary>Ajouter une photo</summary>
      <form onSubmit={async e=>{
       e.preventDefault();
      if(!photo)return;
+     const form=e.currentTarget;
      setBusy(true);
      setErr('');
      try{
        await sendPhoto(id,photo);
       setPhoto(null);
-      await r.reload();
-      saved()
+      form.reset();
+      saved();
+      void r.reload()
       }catch(e){
        setErr((e as Error).message)
       }finally{
@@ -298,8 +318,9 @@ return <Dialog
     setErr('');
     try{
       await request('',{action:'field-note-update',id,version:n.version,status:v.status,manager_note:v.manager_note});
-     await r.reload();
-     saved()
+     saved();
+     // The form is keyed by version: stay locked until the new one is loaded.
+     await r.reload()
      }catch(e){
       setErr((e as Error).message)
      }finally{

@@ -9,7 +9,7 @@ function deferred<T = any>() {
   return {promise, resolve, reject};
 }
 
-test('repeat visits reuse fresh data and expire after 15 seconds', async () => {
+test('repeat visits reuse fresh data; after 15 seconds the last result stays visible but is refetched', async () => {
   let time = 0, calls = 0;
   const client = createRequestCache(async () => ({revision: ++calls}), () => time);
   expect(await client.request('action=missions&from=2026-11-01')).toEqual({revision: 1});
@@ -17,8 +17,10 @@ test('repeat visits reuse fresh data and expire after 15 seconds', async () => {
   expect(await client.request('from=2026-11-01&action=missions')).toEqual({revision: 1});
   expect(calls).toBe(1);
   time = 15000;
-  expect(client.cached('action=missions&from=2026-11-01')).toBeUndefined();
+  expect(client.peek('action=missions&from=2026-11-01')).toEqual({data: {revision: 1}, stale: true});
+  expect(client.cached('action=missions&from=2026-11-01')).toEqual({revision: 1});
   expect(await client.request('action=missions&from=2026-11-01')).toEqual({revision: 2});
+  expect(client.peek('action=missions&from=2026-11-01')).toEqual({data: {revision: 2}, stale: false});
 });
 
 test('simultaneous readers share a request; explicit refresh still gets new data', async () => {
@@ -33,6 +35,28 @@ test('simultaneous readers share a request; explicit refresh still gets new data
   expect(calls).toBe(2);
 });
 
+test('two widgets polling the same query issue one request per period', async () => {
+  let time = 0, calls = 0;
+  const client = createRequestCache(async () => ({revision: ++calls}), () => time);
+  await client.request('action=bonuses', undefined, {maxAge: 54000});
+  time = 7000;
+  await client.request('action=bonuses', undefined, {maxAge: 54000});
+  expect(calls).toBe(1);
+  time = 60000;
+  await client.request('action=bonuses', undefined, {maxAge: 54000});
+  time = 67000;
+  await client.request('action=bonuses', undefined, {maxAge: 54000});
+  expect(calls).toBe(2);
+});
+
+test('an answer is aged from the request start, so a slow answer does not skip the next poll', async () => {
+  let time = 0, calls = 0;
+  const client = createRequestCache(async () => {calls++; time += 3000; return {revision: calls};}, () => time);
+  await client.request('action=missions', undefined, {maxAge: 18000});
+  time = 20000;
+  expect(await client.request('action=missions', undefined, {maxAge: 18000})).toEqual({revision: 2});
+});
+
 test('reads during a write wait for confirmation and never reuse pre-write data', async () => {
   const write = deferred();
   let revision = 1, reads = 0;
@@ -43,13 +67,29 @@ test('reads during a write wait for confirmation and never reuse pre-write data'
   });
   await client.request('action=missions');
   const saved = client.request('', {action: 'schedule'});
-  expect(client.cached('action=missions')).toBeUndefined();
+  expect(client.peek('action=missions')?.stale).toBe(true);
   const nextRead = client.request('action=missions');
   expect(reads).toBe(1);
   write.resolve(null);
   await saved;
   expect(await nextRead).toEqual({revision: 2});
   expect(reads).toBe(2);
+});
+
+test('a write keeps the last results on screen (stale) and asks subscribers to refresh them', async () => {
+  let revision = 1, notified = 0;
+  const client = createRequestCache(async (_query, body) => body ? {ok: true} : {revision});
+  const off = client.subscribe(() => notified++);
+  await client.request('action=missions');
+  revision = 2;
+  await client.request('', {action: 'sale'});
+  expect(notified).toBe(1);
+  expect(client.cached('action=missions')).toEqual({revision: 1});
+  expect(client.peek('action=missions')?.stale).toBe(true);
+  expect(await client.request('action=missions')).toEqual({revision: 2});
+  off();
+  await client.write(async () => ({ok: true}));
+  expect(notified).toBe(1);
 });
 
 test('an old account response cannot return or repopulate cache after login/logout', async () => {
@@ -68,6 +108,18 @@ test('an old account response cannot return or repopulate cache after login/logo
   expect(client.cached('action=service-list')).toEqual({owner: 'new-account'});
 });
 
+test('a hard clear (logout, account change) drops even stale results and in-flight reads', async () => {
+  const slow = deferred();
+  let calls = 0;
+  const client = createRequestCache(async () => (++calls === 2 ? slow.promise : {revision: calls}));
+  await client.request('action=performance');
+  const inFlight = client.request('action=stocks&store=x');
+  client.clear();
+  expect(client.cached('action=performance')).toBeUndefined();
+  slow.resolve({owner: 'previous-account'});
+  expect(await inFlight).toEqual({revision: 3});
+});
+
 test('failed writes invalidate cached state too', async () => {
   let reads = 0;
   const client = createRequestCache(async (_query, body) => {
@@ -76,8 +128,17 @@ test('failed writes invalidate cached state too', async () => {
   });
   await client.request('action=performance');
   await expect(client.request('', {action: 'sale'})).rejects.toThrow('Write failed');
-  expect(client.cached('action=performance')).toBeUndefined();
+  expect(client.peek('action=performance')?.stale).toBe(true);
   expect(await client.request('action=performance')).toEqual({revision: 2});
+});
+
+test('photo uploads go through write(): they invalidate like any other save', async () => {
+  let reads = 0;
+  const client = createRequestCache(async () => ({revision: ++reads}));
+  await client.request('action=missions');
+  await client.write(async () => ({ok: true, id: 'photo'}));
+  expect(client.peek('action=missions')?.stale).toBe(true);
+  expect(await client.request('action=missions')).toEqual({revision: 2});
 });
 
 test('authentication/authorization failures discard every cached result and are not cached', async () => {
@@ -104,7 +165,19 @@ test('bootstrap, credentials, individual records and audit data are never cached
     await client.request(query);
     expect(calls - before).toBe(2);
     expect(client.cached(query)).toBeUndefined();
+    client.prime(query, {primed: true});
+    expect(client.cached(query)).toBeUndefined();
   }
+});
+
+test('the week sent with bootstrap primes the planning query, whatever the parameter order', async () => {
+  let calls = 0;
+  const client = createRequestCache(async () => ({missions: [], revision: ++calls}));
+  client.prime('action=missions&from=2026-11-16&to=2026-11-22', {missions: [{id: 'm1'}]});
+  const planning = new URLSearchParams({action: 'missions', from: '2026-11-16', to: '2026-11-22'}).toString();
+  expect(await client.request(planning)).toEqual({missions: [{id: 'm1'}]});
+  expect(await client.request('to=2026-11-22&from=2026-11-16&action=missions')).toEqual({missions: [{id: 'm1'}]});
+  expect(calls).toBe(0);
 });
 
 test('different filters stay separate and an external tab invalidation forces a fresh read', async () => {
@@ -114,7 +187,7 @@ test('different filters stay separate and an external tab invalidation forces a 
   const second = await client.request('action=performance&person=two');
   expect(first.query).not.toBe(second.query);
   expect(calls).toBe(2);
-  client.clear();
+  client.invalidate();
   await client.request('action=performance&person=one');
   expect(calls).toBe(3);
 });

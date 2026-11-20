@@ -14,8 +14,11 @@ return <div className="metric">
    {note}</small>}</div>
 }
 
+// Slow-moving aggregates: polled every minute, refreshed at once after a sale.
+const SLOW=60000;
+
 export function BonusStrip(){
-const r=useRemote('action=bonuses');
+const r=useRemote('action=bonuses',true,SLOW);
 return <section className="bonus-strip" aria-label="Mes primes">
   {r.error?<Warning>
    {r.error}</Warning>:r.data?<>
@@ -37,7 +40,7 @@ export function Performance({data,details}:{data:any;details:ReactNode}){
 const today=dayInAlger(),manager=manages(data.user),[from,setFrom]=useState(today.slice(0,7)+'-01'),[to,setTo]=useState(today),[person,setPerson]=useState(''),[store,setStore]=useState(''),[tab,setTab]=useState('overview'),[rank,setRank]=useState<'tickets'|'revenue'>('tickets'),[productSearch,setProductSearch]=useState(''),[brand,setBrand]=useState('');
 
 
-const r=useRemote('action=performance&'+new URLSearchParams({from,to,person,store})),bonus=useRemote('action=bonuses',tab==='bonus'),d=r.data;
+const r=useRemote('action=performance&'+new URLSearchParams({from,to,person,store}),tab!=='reports',SLOW),bonus=useRemote('action=bonuses',tab==='bonus',SLOW),d=r.data;
 
 
 const team=d?[...d.people].sort((a:any,b:any)=>b[rank]-a[rank]):[],products=(d?.products||[]).filter((p:any)=>(!brand||p.brand===brand)&&p.name.toLowerCase().includes(productSearch.toLowerCase()));
