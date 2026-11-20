@@ -18,7 +18,8 @@ export const REQUEST_REASONS:Record<string,{label:string;category:string}>={
 export const NOTE_TYPES:Record<string,string>={shelf:'Rayon & mise en avant',competitor:'Concurrence',feedback:'Retour client',availability:'Disponibilité & stock',opportunity:'Opportunité commerciale',other:'Autre observation'};
 export const NOTE_STATUS:Record<string,string>={new:'À lire',seen:'Vu',actioned:'Action engagée'};
 export const SENTIMENTS:Record<string,string>={positive:'Positif',neutral:'Neutre',negative:'Négatif'};
-export function reasonLabel(c:any){return (c.kind==='request'?REQUEST_REASONS:REASONS)[c.reason]?.label||'Autre';}
+export function reasonFor(kind:string,reason:string){const r=kind==='request'?REQUEST_REASONS:REASONS;return Object.hasOwn(r,reason)?r[reason]:undefined;}
+export function reasonLabel(c:any){return reasonFor(c.kind,c.reason)?.label||'Autre';}
 export function canReadCase(u:Pick<User,'id'|'role'>,c:any){return manages(u)||u.role==='doctor'&&c.kind==='complaint'||u.role==='field'&&c.author_id===u.id;}
 export function safeCase(u:Pick<User,'id'|'role'>,c:any){const {private_note,description,...safe}=c;return {...safe,...(u.role==='doctor'?{private_note,description}:c.author_id===u.id||manages(u)&&c.category!=='tolerance'?{description}:{})};}
 export function canReadFieldNote(u:Pick<User,'id'|'role'>,n:any){return manages(u)||u.role==='field'&&n.author_id===u.id;}

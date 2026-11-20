@@ -15,6 +15,13 @@
       "when": 1794825342644,
       "tag": "0001_account_password_vault",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795186056040,
+      "tag": "0002_perf_indexes_attendance",
+      "breakpoints": true
     }
   ]
 }

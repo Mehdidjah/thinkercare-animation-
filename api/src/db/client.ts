@@ -15,7 +15,9 @@ let pool: Pool | null = null;
 let database: NodePgDatabase<typeof schema> | null = null;
 
 export function getPool(): Pool {
-  if (!pool) {
+  // A pool ended by a one-off script or a test suite is replaced on next use.
+  if (!pool || (pool as any).ending) {
+    database = null;
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) throw new Error('DATABASE_URL is not set.');
     pool = new Pool({
@@ -24,6 +26,14 @@ export function getPool(): Pool {
       // managed endpoint does not provide a public chain for.
       ssl: sslConfig(connectionString),
       max: Number(process.env.PG_POOL_MAX || 10),
+      // Fail fast instead of queueing forever when the pool or database is stuck.
+      connectionTimeoutMillis: 10000,
+      // Low, bursty traffic: keep connections across the app's 20 s polling gaps
+      // instead of reconnecting (pg's default closes them after 10 s idle).
+      idleTimeoutMillis: 300000,
+      keepAlive: true,
+      // Server-side cap per statement; migrate.ts disables it (PG_STATEMENT_TIMEOUT_MS=0).
+      statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS ?? 30000) || undefined,
     });
   }
   return pool;
@@ -39,7 +49,8 @@ function sslConfig(url: string) {
 }
 
 export function db(): NodePgDatabase<typeof schema> {
-  if (!database) database = drizzle(getPool(), {schema});
+  const current = getPool();
+  if (!database) database = drizzle(current, {schema});
   return database;
 }
 

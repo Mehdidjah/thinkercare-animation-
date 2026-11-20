@@ -29,9 +29,10 @@ export async function run(ex: Exec, query: SQL): Promise<number> {
  * Runs a mutating unit of work in a SERIALIZABLE transaction with a small
  * retry-on-serialization-failure loop (design §9.1.1). SQLite serialized every
  * write; under Postgres SERIALIZABLE closes the overlap/oversell race that
- * READ COMMITTED would allow. Real concurrency is ~zero (one field agent per
- * device/mission) so retries essentially never fire; an exhausted retry becomes
- * a 409 "data changed, retry".
+ * READ COMMITTED would allow. Conflicts are rare but real (e.g. simultaneous
+ * photo uploads whose triggers read the same index pages), so retries wait a
+ * jittered, exponentially growing 20–200 ms to let the competing transaction
+ * commit first; an exhausted retry becomes a 409 "data changed, retry".
  */
 export async function serializable<T>(fn: (tx: Exec) => Promise<T>, retries = 5): Promise<T> {
   for (let attempt = 0; ; attempt++) {
@@ -41,9 +42,14 @@ export async function serializable<T>(fn: (tx: Exec) => Promise<T>, retries = 5)
       })) as T;
     } catch (e: any) {
       const code = e?.code;
-      if ((code === '40001' || code === '40P01') && attempt < retries) continue;
-      if (code === '40001' || code === '40P01')
+      if ((code === '40001' || code === '40P01') && attempt < retries) {
+        await new Promise((r) => setTimeout(r, Math.min(200, 20 * 2 ** attempt * (1 + Math.random()))));
+        continue;
+      }
+      if (code === '40001' || code === '40P01') {
+        console.warn(`[tx] serialization retries exhausted (sqlstate=${code})`);
         fail('Données modifiées ou enregistrement déjà présent. Actualisez avant de réessayer.', 409);
+      }
       throw e;
     }
   }

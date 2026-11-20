@@ -2,6 +2,7 @@ import type {SQL} from 'drizzle-orm';
 import {type Exec, first, all, run, serializable, sql} from '../db/tx';
 import {fail} from '../common/errors';
 import {randomUUID} from '../common/crypto';
+import {date} from '../common/validation';
 import {canMission, canEdit, dayInAlger, type User} from '../domain/core';
 import {canReadFieldNote} from '../domain/operations';
 
@@ -15,6 +16,18 @@ import {canReadFieldNote} from '../domain/operations';
 export function auditSql(u: User, action: string, target: string, detail: unknown = {}) {
   return sql`INSERT INTO tf_audit(id,user_id,at,action,target,detail)
              VALUES(${randomUUID()},${u.id},${new Date().toISOString()},${action},${target},${JSON.stringify(detail)}::jsonb)`;
+}
+
+/**
+ * Audit detail for a referential edit: the fields whose value changed, as
+ * {field: {from, to}} (every field on creation). Callers pass only safe
+ * columns — never password, salt, hash or ciphertext.
+ */
+export function changes(old: Record<string, unknown> | undefined, next: Record<string, unknown>) {
+  const out: Record<string, {from: unknown; to: unknown}> = {};
+  for (const [k, v] of Object.entries(next))
+    if (!old || JSON.stringify(old[k]) !== JSON.stringify(v)) out[k] = {from: old ? old[k] ?? null : null, to: v};
+  return out;
 }
 
 /** Load a mission the user may access (brands arrives already parsed from jsonb). */
@@ -98,6 +111,7 @@ export function period(q: URLSearchParams) {
 }
 
 function parseDate(s: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || isNaN(Date.parse(s + 'T00:00:00Z'))) fail('Date invalide.');
+  // Strict calendar check: 2026-02-31 parses in JS (rolls over) but is not a date.
+  if (!date.safeParse(s).success) fail('Date invalide.');
   return s;
 }
