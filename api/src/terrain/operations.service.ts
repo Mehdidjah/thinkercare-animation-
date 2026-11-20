@@ -7,7 +7,7 @@ import {randomUUID} from '../common/crypto';
 import {uuid, id, text, optionalDate} from '../common/validation';
 import {auditSql, period, noteBy} from './helpers';
 import {manages, canMission, type User} from '../domain/core';
-import {REASONS, REQUEST_REASONS, canReadCase, safeCase, canReadFieldNote} from '../domain/operations';
+import {reasonFor, canReadCase, safeCase} from '../domain/operations';
 
 const txt = text;
 const contextSchema = {mission_id: uuid.nullable(), store_id: id.nullable(), store_label: txt(160)};
@@ -34,13 +34,13 @@ export class OperationsService {
     }
 
     if (action === 'service-detail') {
-      const c = await caseBy(db(), u, uuid.parse(q.get('id')));
-      const events = (
-        await all<any>(
-          db(),
-          sql`SELECT e.*,u.label FROM tf_case_events e JOIN tf_users u ON u.id=e.user_id WHERE case_id=${c.id} ORDER BY at`,
-        )
-      ).filter((e) => !e.clinical || u.role === 'doctor' || c.author_id === u.id);
+      const key = uuid.parse(q.get('id'));
+      // Events are only returned once caseBy has authorised the read.
+      const [c, rows] = await Promise.all([
+        caseBy(db(), u, key),
+        all<any>(db(), sql`SELECT e.*,u.label FROM tf_case_events e JOIN tf_users u ON u.id=e.user_id WHERE case_id=${key} ORDER BY at`),
+      ]);
+      const events = rows.filter((e) => !e.clinical || u.role === 'doctor' || c.author_id === u.id);
       return {case: safeCase(u, c), events};
     }
 
@@ -61,8 +61,12 @@ export class OperationsService {
     }
 
     if (action === 'field-note') {
-      const n = await noteBy(db(), u, uuid.parse(q.get('id')));
-      const photos = await all(db(), sql`SELECT id,created_at FROM tf_field_photos WHERE note_id=${n.id} ORDER BY created_at`);
+      const key = uuid.parse(q.get('id'));
+      // Photos are only returned once noteBy has authorised the read.
+      const [n, photos] = await Promise.all([
+        noteBy(db(), u, key),
+        all(db(), sql`SELECT id,created_at FROM tf_field_photos WHERE note_id=${key} ORDER BY created_at`),
+      ]);
       return {note: n, photos};
     }
 
@@ -71,13 +75,20 @@ export class OperationsService {
       const today = dayInAlgerNow();
       const month = today.slice(0, 7);
       const from = Number(month.slice(0, 4)) - 1 + month.slice(4) + '-01';
-      const conds = [sql`t.status='valid'`, sql`m.day>=${from}`, sql`m.day<=${today}`];
-      if (!manages(u)) conds.push(sql`m.field_id=${u.id}`);
+      const days = sql`m.day>=${from} AND m.day<=${today}`;
+      // An animatrice's strip (polled every 20 s) looks up tickets per mission of hers, so its cost follows
+      // her own missions; joined directly, the planner scans every ticket ever recorded. Managers cover
+      // most tickets of the 13 months, where one scan with a hash join stays cheaper.
       const rows = await all<any>(
         db(),
-        sql`SELECT m.day,COUNT(*) AS tickets,SUM(t.bonus_amount) AS bonus,SUM(t.total) AS revenue
-            FROM tf_tickets t JOIN tf_missions m ON m.id=t.mission_id
-            WHERE ${sql.join(conds, sql` AND `)} GROUP BY m.day ORDER BY m.day`,
+        manages(u)
+          ? sql`SELECT m.day,COUNT(*) AS tickets,SUM(t.bonus_amount) AS bonus,SUM(t.total) AS revenue
+                FROM tf_tickets t JOIN tf_missions m ON m.id=t.mission_id
+                WHERE t.status='valid' AND ${days} GROUP BY m.day ORDER BY m.day`
+          : sql`SELECT m.day,SUM(x.tickets) AS tickets,SUM(x.bonus) AS bonus,SUM(x.revenue) AS revenue
+                FROM tf_missions m CROSS JOIN LATERAL (SELECT COUNT(*) AS tickets,SUM(t.bonus_amount) AS bonus,SUM(t.total) AS revenue
+                  FROM tf_tickets t WHERE t.mission_id=m.id AND t.status='valid') x
+                WHERE m.field_id=${u.id} AND ${days} AND x.tickets>0 GROUP BY m.day ORDER BY m.day`,
       );
       const months: Record<string, any> = {};
       for (const r of rows) {
@@ -168,7 +179,8 @@ export class OperationsService {
         .strict()
         .parse(b);
       if (u.role === 'doctor' && v.kind !== 'complaint') fail('Les demandes commerciales sont réservées à l’équipe terrain.', 403);
-      const reason = (v.kind === 'request' ? REQUEST_REASONS : REASONS)[v.reason];
+      // Own keys only: an inherited name such as "toString" is not a reason.
+      const reason = reasonFor(v.kind, v.reason);
       if (!reason) fail('Sélectionnez un motif valide.');
       if (reason.category === 'tolerance' && !v.consent) fail('La transmission anonymisée au médecin doit être acceptée.');
       return serializable(async (tx) => {

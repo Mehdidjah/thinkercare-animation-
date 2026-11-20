@@ -121,6 +121,8 @@ export const tfMissions = pgTable('tf_missions', {
   reportStatusCheck: check('tf_missions_report_status', sql`${t.reportStatus} IN ('draft','submitted','approved','changes')`),
   timeCheck: check('tf_missions_time', sql`${t.startAt} < ${t.endAt}`),
   dayIdx: index('tf_mission_day').on(t.day, t.fieldId),
+  fieldIdx: index('tf_mission_field').on(t.fieldId, t.day),
+  storeIdx: index('tf_mission_store').on(t.storeId, t.day),
   oneOngoing: uniqueIndex('tf_one_ongoing').on(t.fieldId).where(sql`status = 'ongoing'`),
 }));
 
@@ -174,7 +176,9 @@ export const tfPhotos = pgTable('tf_photos', {
   size: integer('size').notNull(),
   objectKey: text('object_key').notNull().unique(),
   purpose: text('purpose').notNull().default('report'),
-});
+}, (t) => ({
+  missionIdx: index('tf_photos_mission').on(t.missionId, t.createdAt),
+}));
 
 // Legacy complaint archive — kept (migrated into tf_cases by 0005, retained read-only).
 export const tfComplaints = pgTable('tf_complaints', {
@@ -207,7 +211,9 @@ export const tfAudit = pgTable('tf_audit', {
   action: text('action').notNull(),
   target: text('target').notNull(),
   detail: jsonb('detail').notNull().default({}),
-});
+}, (t) => ({
+  atIdx: index('tf_audit_at').on(t.at),
+}));
 
 export const tfOps = pgTable('tf_ops', {
   id: text('id').primaryKey(),
@@ -234,7 +240,7 @@ export const tfAlertAck = pgTable('tf_alert_ack', {
   ackAt: text('ack_at').notNull(),
 }, (t) => ({
   pk: primaryKey({columns: [t.userId, t.missionId, t.kind]}),
-  kindCheck: check('tf_alert_ack_kind', sql`${t.kind} IN ('missing_start','late_start')`),
+  kindCheck: check('tf_alert_ack_kind', sql`${t.kind} IN ('missing_start','late_start','missing_end')`),
 }));
 
 export const tfCases = pgTable('tf_cases', {
@@ -313,4 +319,6 @@ export const tfFieldPhotos = pgTable('tf_field_photos', {
   mime: text('mime').notNull(),
   size: integer('size').notNull(),
   createdAt: text('created_at').notNull(),
-});
+}, (t) => ({
+  noteIdx: index('tf_field_photos_note').on(t.noteId, t.createdAt),
+}));

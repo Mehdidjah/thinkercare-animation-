@@ -29,6 +29,9 @@ function migrationsFolder(): string {
 }
 
 async function main() {
+  // Index builds and constraint checks may legitimately exceed the request-path
+  // statement timeout on a large table; a failed boot migration is worse.
+  process.env.PG_STATEMENT_TIMEOUT_MS ??= '0';
   const database = db();
   console.log('[migrate] applying schema migrations…');
   await migrate(database, {migrationsFolder: migrationsFolder()});
