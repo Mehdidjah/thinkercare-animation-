@@ -91,16 +91,27 @@ export class TerrainService {
         !(await first(db(), sql`SELECT id FROM tf_missions WHERE store_id=${store} AND field_id=${u.id} LIMIT 1`))
       )
         fail('Point de vente non accessible.', 403);
-      const r = await all(
-        db(),
-        sql`SELECT * FROM (
-              SELECT c.*,p.name AS product_name,p.brand,p.unit,m.day,m.actual_end,
-                ROW_NUMBER() OVER(PARTITION BY c.product_id ORDER BY m.actual_end DESC,c.updated_at DESC) AS rn
-              FROM tf_counts c JOIN tf_missions m ON m.id=c.mission_id JOIN tf_products p ON p.id=c.product_id
-              WHERE m.store_id=${store} AND m.status='completed' AND c.closing IS NOT NULL
-            ) sub WHERE rn=1 ORDER BY brand,product_name`,
-      );
-      return {stocks: r};
+      // Présentoir photos follow the photo read rule: a field user only gets those of her own missions.
+      const shown = [sql`m.store_id=${store}`, sql`m.status<>'cancelled'`, sql`ph.purpose='presentoir'`];
+      if (!manages(u)) shown.push(sql`m.field_id=${u.id}`);
+      const [r, presentoir] = await Promise.all([
+        all(
+          db(),
+          sql`SELECT * FROM (
+                SELECT c.*,p.name AS product_name,p.brand,p.unit,m.day,m.actual_end,
+                  ROW_NUMBER() OVER(PARTITION BY c.product_id ORDER BY m.actual_end DESC,c.updated_at DESC) AS rn
+                FROM tf_counts c JOIN tf_missions m ON m.id=c.mission_id JOIN tf_products p ON p.id=c.product_id
+                WHERE m.store_id=${store} AND m.status='completed' AND c.closing IS NOT NULL
+              ) sub WHERE rn=1 ORDER BY brand,product_name`,
+        ),
+        all(
+          db(),
+          sql`SELECT ph.id,ph.created_at,ph.caption,ph.mission_id,m.day,f.label AS field_name
+              FROM tf_photos ph JOIN tf_missions m ON m.id=ph.mission_id JOIN tf_users f ON f.id=m.field_id
+              WHERE ${sql.join(shown, sql` AND `)} ORDER BY ph.created_at DESC LIMIT 8`,
+        ),
+      ]);
+      return {stocks: r, presentoir};
     }
 
     if (action === 'reports') {

@@ -17,7 +17,8 @@
     "test:data": "bun test test/data.test.ts",
     "test:uploads": "bun test test/photo-body.test.ts",
     "test:platform": "bun test test/platform.test.ts",
-    "test:midway": "bun test test/midway.test.ts"
+    "test:midway": "bun test test/midway.test.ts",
+    "test:presentoir": "bun test test/presentoir.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
