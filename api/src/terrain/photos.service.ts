@@ -1,5 +1,6 @@
 import {Injectable} from '@nestjs/common';
 import type {Request, Response} from 'express';
+import {pipeline} from 'node:stream';
 import {z} from 'zod';
 import {db} from '../db/client';
 import {first, run, serializable, sql} from '../db/tx';
@@ -52,6 +53,16 @@ export class PhotosService {
       const issue = clockIssue(u, m, purpose);
       if (issue) fail(issue, 409);
     }
+    if (purpose === 'checkin') {
+      // tf_one_ongoing would reject the check-in only after the photo is stored, with a generic message.
+      const busy = await first<any>(
+        db(),
+        sql`SELECT m.day,s.name FROM tf_missions m JOIN tf_stores s ON s.id=m.store_id
+            WHERE m.field_id=${m.field_id} AND m.status='ongoing' AND m.id<>${m.id} LIMIT 1`,
+      );
+      if (busy)
+        fail(`Une autre animation est encore en cours (${busy.name}, ${busy.day.split('-').reverse().join('/')}). Pointez d’abord votre départ de cette animation.`, 409);
+    }
     if (form.get('no_person') !== 'true') fail('Confirmez une photo du lieu sans personnes ni documents personnels.');
     const caption = text(300).parse(form.get('caption') || '');
     const bytes = new Uint8Array(await (file as File).arrayBuffer());
@@ -87,14 +98,31 @@ export class PhotosService {
     const p = await first<any>(db(), sql`SELECT * FROM tf_photos WHERE id=${uuid.parse(req.query.id)}`);
     if (!p) fail('Photo introuvable.', 404);
     await mission(db(), u, p.mission_id);
+    await this.send(req, res, p, {'Content-Disposition': 'inline'});
+  }
+
+  /**
+   * Streams a stored photo after the caller's access check. A photo id always
+   * names the same bytes, so the browser may keep it (private: never shared
+   * caches) and revalidate by ETag. pipeline() destroys the storage stream when
+   * the client aborts or either side fails, so no file handle or socket leaks.
+   */
+  private async send(req: Request, res: Response, p: any, extra: Record<string, string> = {}): Promise<void> {
+    const cache = {'Cache-Control': 'private, max-age=31536000, immutable', ETag: `"${p.id}"`};
+    const known = String(req.headers['if-none-match'] || '').split(',');
+    if (known.some((tag) => tag.trim().replace(/^W\//, '') === cache.ETag)) {
+      res.set(cache).status(304).end();
+      return;
+    }
     if (!this.storage.configured()) fail('Stockage indisponible.', 503);
-    const stream = await this.storage.get(p.object_key);
-    if (!stream) fail('Photo indisponible.', 404);
-    res.setHeader('Content-Type', p.mime);
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Disposition', 'inline');
-    stream!.pipe(res);
+    const file = await this.storage.open(p.object_key);
+    if (!file) fail('Photo indisponible.', 404);
+    res.set({...cache, 'Content-Type': p.mime, 'X-Content-Type-Options': 'nosniff', ...extra});
+    if (file!.size !== undefined) res.setHeader('Content-Length', String(file!.size));
+    pipeline(file!.stream, res, (e) => {
+      if (e && (e as any).code !== 'ERR_STREAM_PREMATURE_CLOSE')
+        console.error(`[photos] streaming ${p.object_key} failed: ${e.message}`);
+    });
   }
 
   // GET/POST /api/field-photos — port of fieldPhotoEndpoint() (uploadFieldMedia / readFieldMedia).
@@ -139,12 +167,6 @@ export class PhotosService {
     const p = await first<any>(db(), sql`SELECT * FROM tf_field_photos WHERE id=${uuid.parse(req.query.id)}`);
     if (!p) fail('Photo introuvable.', 404);
     await noteBy(db(), u, p.note_id);
-    if (!this.storage.configured()) fail('Stockage indisponible.', 503);
-    const stream = await this.storage.get(p.object_key);
-    if (!stream) fail('Photo indisponible.', 404);
-    res.setHeader('Content-Type', p.mime);
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    stream!.pipe(res);
+    await this.send(req, res, p);
   }
 }

@@ -11,8 +11,10 @@
     "db:migrate": "node dist/db/migrate.js",
     "seed": "node dist/db/seed.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test",
     "test:passwords": "bun test test/passwords.test.ts",
-    "test:uploads": "bun test test/photo-body.test.ts"
+    "test:uploads": "bun test test/photo-body.test.ts",
+    "test:platform": "bun test test/platform.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.705.0",

@@ -11,3 +11,6 @@
 docs
 thinkercare-backup
 app/tests
+api/test
+.claude
+.memory
