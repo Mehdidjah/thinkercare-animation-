@@ -31,9 +31,11 @@ export class TerrainService {
     if (action === 'bootstrap') {
       if (u.force_change) return {user: u, products: [], stores: [], users: [], devices: [], limited: false, serverTime: iso()};
       const manager = manages(u);
-      // Same week the Planning screen opens on, so it renders without a second round trip.
+      // Same week the Planning screen opens on, so it renders without a second round trip, along with
+      // what that screen polls besides: the animatrice's bonus strip, the managers' attendance alerts.
       const from = weekStart(dayInAlger()), to = shiftDay(from, 6);
-      const [p, stores, users, devices, week] = await Promise.all([
+      const side = u.role === 'field' ? 'bonuses' : manager ? 'attendance-alerts' : null;
+      const [p, stores, users, devices, week, extra] = await Promise.all([
         all(db(), sql`SELECT * FROM tf_products ORDER BY brand,name LIMIT 2001`),
         u.role === 'doctor' ? Promise.resolve([]) : manager
           ? all(db(), sql`SELECT * FROM tf_stores ORDER BY name LIMIT 2001`)
@@ -41,7 +43,9 @@ export class TerrainService {
         manager ? all(db(), sql`SELECT id,username,label,role,active,force_change,password_ciphertext IS NOT NULL AS password_available FROM tf_users ORDER BY label LIMIT 1001`) : Promise.resolve([]),
         manager ? all(db(), sql`SELECT * FROM tf_devices ORDER BY name LIMIT 1001`) : Promise.resolve([]),
         u.role === 'doctor' ? Promise.resolve(null) : this.missions(u, from, to),
+        side === 'bonuses' ? this.ops.getOperations(u, new URLSearchParams({action: side})) : side ? this.attendanceAlerts(u) : Promise.resolve(null),
       ]);
+      const prefetch = {missions: {query: `action=missions&from=${from}&to=${to}`, data: week}, ...(side ? {[side]: {query: 'action=' + side, data: extra}} : {})};
       return {
         user: u,
         products: p.slice(0, 2000),
@@ -50,44 +54,13 @@ export class TerrainService {
         devices: devices.slice(0, 1000),
         limited: p.length > 2000 || stores.length > 2000 || users.length > 1000 || devices.length > 1000,
         serverTime: iso(),
-        ...(week ? {prefetch: {missions: {query: `action=missions&from=${from}&to=${to}`, data: week}}} : {}),
+        ...(week ? {prefetch} : {}),
       };
     }
 
     if (action === 'attendance-alerts') {
       if (!manages(u)) fail('Accès gestionnaire ou direction requis.', 403);
-      const now = iso();
-      const today = dayInAlger(now);
-      // Missions still open are kept past the 8-day window: a forgotten check-out stays visible until closed.
-      const r = await all<any>(
-        db(),
-        sql`SELECT m.*,s.name AS store_name,f.label AS field_name,
-             ARRAY(SELECT k.kind FROM tf_alert_ack k WHERE k.user_id=${u.id} AND k.mission_id=m.id) AS acked
-            FROM tf_missions m JOIN tf_stores s ON s.id=m.store_id JOIN tf_users f ON f.id=m.field_id
-            WHERE (m.day>=${shiftDay(today, -7)} AND m.day<=${today} OR m.status='ongoing') AND m.status<>'cancelled' AND f.active=1
-            ORDER BY m.start_at DESC LIMIT 1001`,
-      );
-      const alerts = r.slice(0, 1000).flatMap((m) => {
-        const x = attendance(m, now);
-        return x
-          ? [
-              {
-                id: m.id + ':' + x.kind,
-                mission_id: m.id,
-                store_name: m.store_name,
-                field_name: m.field_name,
-                day: m.day,
-                start_at: m.start_at,
-                end_at: m.end_at,
-                actual_start: m.actual_start,
-                start_photo_id: m.start_photo_id,
-                ...x,
-                acknowledged: m.acked.includes(x.kind),
-              },
-            ]
-          : [];
-      });
-      return {alerts, truncated: r.length > 1000, serverTime: now};
+      return this.attendanceAlerts(u);
     }
 
     if (action === 'missions') {
@@ -213,6 +186,42 @@ export class TerrainService {
     fail('Action inconnue.', 404);
   }
 
+  /** Attendance alerts for a manager, exactly as GET action=attendance-alerts returns them (also prefetched by bootstrap). */
+  private async attendanceAlerts(u: User) {
+    const now = iso();
+    const today = dayInAlger(now);
+    // Missions still open are kept past the 8-day window: a forgotten check-out stays visible until closed.
+    const r = await all<any>(
+      db(),
+      sql`SELECT m.*,s.name AS store_name,f.label AS field_name,
+           ARRAY(SELECT k.kind FROM tf_alert_ack k WHERE k.user_id=${u.id} AND k.mission_id=m.id) AS acked
+          FROM tf_missions m JOIN tf_stores s ON s.id=m.store_id JOIN tf_users f ON f.id=m.field_id
+          WHERE (m.day>=${shiftDay(today, -7)} AND m.day<=${today} OR m.status='ongoing') AND m.status<>'cancelled' AND f.active=1
+          ORDER BY m.start_at DESC LIMIT 1001`,
+    );
+    const alerts = r.slice(0, 1000).flatMap((m) => {
+      const x = attendance(m, now);
+      return x
+        ? [
+            {
+              id: m.id + ':' + x.kind,
+              mission_id: m.id,
+              store_name: m.store_name,
+              field_name: m.field_name,
+              day: m.day,
+              start_at: m.start_at,
+              end_at: m.end_at,
+              actual_start: m.actual_start,
+              start_photo_id: m.start_photo_id,
+              ...x,
+              acknowledged: m.acked.includes(x.kind),
+            },
+          ]
+        : [];
+    });
+    return {alerts, truncated: r.length > 1000, serverTime: now};
+  }
+
   /** Week/range planning rows, exactly as GET action=missions returns them (also used for the bootstrap prefetch). */
   private async missions(u: User, from: string, to: string) {
     const conds = [sql`m.day>=${from}`, sql`m.day<=${to}`];
@@ -303,7 +312,18 @@ export class TerrainService {
           }),
         );
       });
-      return {ok: true};
+      // Deactivation keeps her visits (attendance alerts skip inactive staff): they are
+      // returned so the admin reassigns, cancels or closes each one from the planning.
+      const pending =
+        old?.active && !v.active
+          ? await all<any>(
+              db(),
+              sql`SELECT m.id,m.day,m.status,s.name AS store_name FROM tf_missions m JOIN tf_stores s ON s.id=m.store_id
+                  WHERE m.field_id=${v.id} AND (m.status='planned' AND m.day>=${dayInAlger()} OR m.status='ongoing')
+                  ORDER BY m.day,m.start_at LIMIT 100`,
+            )
+          : [];
+      return {ok: true, pending};
     }
 
     if (['store', 'product', 'device', 'schedule', 'cancel', 'close-mission', 'review'].includes(b.action) && !manages(u))
@@ -620,7 +640,8 @@ export class TerrainService {
         [
           sql`UPDATE tf_tickets SET status='void',void_reason=${v.reason} WHERE id=${v.id}`,
           // A remembered price still stamped with this ticket's created_at was set by it: take it back to the
-          // latest remaining valid sale of that product in this store (unchanged when there is none).
+          // latest remaining valid sale of that product in this store, or forget it when there is none
+          // (the next sale then proposes the catalogue price).
           sql`UPDATE tf_store_prices sp SET unit_price=r.unit_price,updated_at=r.created_at
               FROM (SELECT DISTINCT ON (l.value->>'product_id') (l.value->>'product_id') AS product_id,(l.value->>'unit_price')::int AS unit_price,t.created_at
                     FROM tf_tickets t JOIN tf_missions x ON x.id=t.mission_id, jsonb_array_elements(t.lines) l
@@ -628,6 +649,11 @@ export class TerrainService {
                     ORDER BY (l.value->>'product_id'),t.created_at DESC) r
               WHERE sp.store_id=${m.store_id} AND sp.product_id=r.product_id AND sp.updated_at=${t.created_at}
                 AND sp.product_id IN (SELECT l.value->>'product_id' FROM jsonb_array_elements(${JSON.stringify(t.lines)}::jsonb) l)`,
+          sql`DELETE FROM tf_store_prices sp
+              WHERE sp.store_id=${m.store_id} AND sp.updated_at=${t.created_at}
+                AND sp.product_id IN (SELECT l.value->>'product_id' FROM jsonb_array_elements(${JSON.stringify(t.lines)}::jsonb) l)
+                AND NOT EXISTS (SELECT 1 FROM tf_tickets v JOIN tf_missions x ON x.id=v.mission_id, jsonb_array_elements(v.lines) l
+                                WHERE x.store_id=${m.store_id} AND v.status='valid' AND l.value->>'product_id'=sp.product_id)`,
         ],
         {ticket: v.id, reason: v.reason},
       );

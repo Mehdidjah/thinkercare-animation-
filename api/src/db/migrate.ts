@@ -28,14 +28,34 @@ function migrationsFolder(): string {
   return found;
 }
 
+/**
+ * Postgres may still be restarting when this service restarts with it (Railway
+ * maintenance, failover): wait for it up to a minute instead of failing the
+ * boot at once and spending the restart policy's retries.
+ */
+async function waitForDatabase() {
+  const deadline = Date.now() + 60000;
+  for (;;) {
+    try {
+      await getPool().query('SELECT 1');
+      return;
+    } catch (e) {
+      if (Date.now() > deadline) throw e;
+      console.warn(`[migrate] database not reachable yet (${(e as Error).message}), retrying in 2 s…`);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
+}
+
 async function main() {
   // Index builds and constraint checks may legitimately exceed the request-path
   // statement timeout on a large table; a failed boot migration is worse.
   process.env.PG_STATEMENT_TIMEOUT_MS = '0';
+  await waitForDatabase();
   const database = db();
   console.log('[migrate] applying schema migrations…');
   await migrate(database, {migrationsFolder: migrationsFolder()});
-  console.log('[migrate] applying integrity triggers…');
+  console.log('[migrate] applying integrity triggers (missing ones only)…');
   const triggersSql = readFileSync(resolve('triggers.sql'), 'utf8');
   // Run the triggers file as ONE simple-protocol query (multiple statements +
   // dollar-quoted PL/pgSQL bodies). Going through the raw pool guarantees the

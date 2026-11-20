@@ -15,16 +15,18 @@ export function storageBackend(env: NodeJS.ProcessEnv = process.env): 's3' | 'fi
   return env.STORAGE_DIR ? 'filesystem' : null;
 }
 
+const missing = (e: any) => e?.code === 'ENOENT' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404;
+
 /** Logs a storage failure with the key and error code only — never file contents or credentials. */
 function report(operation: string, key: string, e: any) {
-  const missing = e?.code === 'ENOENT' || e?.name === 'NoSuchKey' || e?.$metadata?.httpStatusCode === 404;
   const detail = [e?.name, e?.code, e?.message].filter(Boolean).join(' ');
-  (missing ? console.warn : console.error)(`[storage] ${operation} ${key} failed: ${detail}`);
+  (missing(e) ? console.warn : console.error)(`[storage] ${operation} ${key} failed: ${detail}`);
 }
 
 /**
  * Photo storage with two interchangeable backends. Keys are `terrain/<uuid>`
- * (mission photos) and `terrain-notes/<uuid>` (field-note photos).
+ * (mission photos) and `terrain-notes/<uuid>` (field-note photos), plus
+ * `<key>.thumb` for the grid thumbnail the app sends along since 2026-11.
  *
  *  1. S3-compatible (Cloudflare R2 / AWS S3 / Backblaze / MinIO) — when the
  *     S3_* env vars are set.
@@ -99,15 +101,22 @@ export class StorageService {
     }
   }
 
-  /** Opens an object for streaming, with its byte size when known, or null if absent/unreadable. */
-  async open(key: string): Promise<{stream: Readable; size?: number} | null> {
+  /**
+   * Opens an object for streaming, with its byte size when known, or null if
+   * absent/unreadable. `optional`: an absent object is expected (thumbnails of
+   * photos uploaded before they existed) and is not logged.
+   */
+  async open(key: string, optional = false): Promise<{stream: Readable; size?: number} | null> {
+    const failed = (e: any) => {
+      if (!(optional && missing(e))) report('get', key, e);
+      return null;
+    };
     if (this.client) {
       try {
         const out = await this.client.send(new GetObjectCommand({Bucket: this.bucket, Key: key}));
         return out.Body ? {stream: out.Body as Readable, size: out.ContentLength} : null;
       } catch (e) {
-        report('get', key, e);
-        return null;
+        return failed(e);
       }
     }
     const p = this.path(key);
@@ -115,8 +124,7 @@ export class StorageService {
       const {size} = await fsp.stat(p);
       return {stream: createReadStream(p), size};
     } catch (e) {
-      report('get', key, e);
-      return null;
+      return failed(e);
     }
   }
 

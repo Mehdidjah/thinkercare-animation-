@@ -1,17 +1,29 @@
 import {Injectable} from '@nestjs/common';
 import type {Request, Response} from 'express';
+import {createHmac, randomBytes} from 'node:crypto';
 import {z} from 'zod';
 import {db} from '../db/client';
 import {first, run, serializable, sql} from '../db/tx';
 import {fail} from '../common/errors';
-import {sha, hashNewPassword, verifyPassword, DUMMY_PASSWORD_HASH, randomToken, randomUUID} from '../common/crypto';
+import {sha, equal, hashNewPassword, verifyPassword, DUMMY_PASSWORD_HASH, randomToken, randomUUID} from '../common/crypto';
 import type {User} from '../domain/core';
 import {sealPassword, openPassword} from '../common/password-vault';
 
 export const COOKIE = '__Host-terrain-session';
+export const DEVICE_COOKIE = '__Host-terrain-device';
 const SESSION_MS = 28800000; // 8h, renewed while in use (see current())
+const DEVICE_MS = 31536000000; // 1 year
 const THROTTLE_WINDOW_MS = 900000; // 15 min
 const DEFAULT_SALT = '0123456789abcdef0123456789abcdef';
+
+/** Signs "this browser logged in as <username>"; null without a usable ACCOUNT_PASSWORD_KEY. */
+function deviceMac(name: string, nonce: string): string | null {
+  const secret = process.env.ACCOUNT_PASSWORD_KEY || '';
+  if (!/^[a-f0-9]{64}$/i.test(secret)) return null;
+  // Own key derived from the vault key, never the AES key itself.
+  const key = createHmac('sha256', Buffer.from(secret, 'hex')).update('terrain-device-cookie').digest();
+  return createHmac('sha256', key).update(name + '|' + nonce).digest('hex');
+}
 
 const text = (n = 1200) => z.string().trim().max(n);
 
@@ -19,15 +31,27 @@ const text = (n = 1200) => z.string().trim().max(n);
 export class AuthService {
   /** Raw session token from the __Host- cookie (cookie-parser populates req.cookies). */
   token(req: Request): string {
-    const fromParser = (req.cookies && req.cookies[COOKIE]) as string | undefined;
-    if (fromParser) return fromParser;
+    return this.cookie(req, COOKIE);
+  }
+
+  private cookie(req: Request, name: string): string {
+    // cookie-parser turns "j:{…}" values into objects: only a plain string can be a token.
+    const fromParser: unknown = req.cookies && req.cookies[name];
+    if (typeof fromParser === 'string' && fromParser) return fromParser;
     // Fallback: parse the header directly.
     const raw = req.headers.cookie || '';
     const hit = raw
       .split(';')
       .map((x) => x.trim())
-      .find((x) => x.startsWith(COOKIE + '='));
-    return hit ? hit.slice(COOKIE.length + 1) : '';
+      .find((x) => x.startsWith(name + '='));
+    return hit ? hit.slice(name.length + 1) : '';
+  }
+
+  /** Nonce of this browser's device cookie when it was issued for `name` by this server, else ''. */
+  private knownDevice(req: Request, name: string): string {
+    const [nonce, mac] = this.cookie(req, DEVICE_COOKIE).split('.');
+    const expected = /^[a-f0-9]{32}$/.test(nonce || '') ? deviceMac(name, nonce) : null;
+    return expected && mac && equal(mac, expected) ? nonce : '';
   }
 
   /**
@@ -107,7 +131,11 @@ export class AuthService {
     // Reserved before verifying (concurrent guesses cannot all slip under the
     // limit) and given back on success, so only failures count. Unknown
     // usernames are throttled alike, which keeps them indistinguishable.
-    const failures = sha('login-user|' + name + '|' + slot);
+    // A browser that already logged in to this account (signed device cookie)
+    // has its own allowance: guesses sent from elsewhere can lock the username
+    // for unknown browsers, but never the real user out of their usual phone.
+    const device = this.knownDevice(req, name);
+    const failures = sha((device ? 'login-device|' + name + '|' + device : 'login-user|' + name) + '|' + slot);
     if ((await this.attempt(failures, now)) > 10) fail('Trop de tentatives. Réessayez dans 15 minutes.', 429);
     const r = await first<any>(db(), sql`SELECT * FROM tf_users WHERE username=${name}`);
     const check = await verifyPassword(v.password, r?.salt || DEFAULT_SALT, r?.password_hash || DUMMY_PASSWORD_HASH);
@@ -134,6 +162,9 @@ export class AuthService {
       run(db(), sql`DELETE FROM tf_throttle WHERE expires<${now}`),
     ]);
     this.setCookie(res, t, SESSION_MS);
+    const nonce = randomBytes(16).toString('hex');
+    const mac = deviceMac(name, nonce);
+    if (mac) res.cookie(DEVICE_COOKIE, nonce + '.' + mac, {httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: DEVICE_MS});
     const {id, username, label, role, active, force_change} = r;
     return {ok: true, user: {id, username, label, role, active, force_change}};
   }

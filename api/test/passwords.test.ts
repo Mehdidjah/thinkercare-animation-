@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {createServer} from 'node:net';
 import {randomBytes, randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
-import {AuthService, COOKIE} from '../src/auth/auth.service';
+import {AuthService, COOKIE, DEVICE_COOKIE} from '../src/auth/auth.service';
 import {AuthGuard} from '../src/auth/auth.guard';
 import {sha, hashNewPassword, passwordHashAsync} from '../src/common/crypto';
 import {TerrainService} from '../src/terrain/terrain.service';
@@ -66,8 +66,9 @@ function response() {
 async function post(body: any, req = request()) {
   const out = response();
   await controller.post({...req, body: JSON.stringify(body)}, out.res);
-  const cookie = out.cookies.at(-1);
-  return {data: out.data, status: out.status, token: cookie?.value ?? '', cookie: cookie?.options, headers: out.headers};
+  const cookie = out.cookies.filter(c => c.name === COOKIE).at(-1);
+  return {data: out.data, status: out.status, token: cookie?.value ?? '', cookie: cookie?.options, headers: out.headers,
+    device: out.cookies.find(c => c.name === DEVICE_COOKIE)};
 }
 
 async function login(username: keyof typeof initial, value = initial[username]) {
@@ -408,6 +409,27 @@ test('failed logins are throttled per username whatever the forwarded IP; succes
   for (let i = 0; i < 10; i++) await expect(attempt('nobody', 'incorrect', 50 + i)).rejects.toMatchObject({status: 401});
   await expect(attempt('nobody', 'incorrect', 60)).rejects.toMatchObject({status: 429});
   expect((await getPool().query("SELECT * FROM tf_audit WHERE action='auth.login_failed'")).rowCount).toBe(10);
+}, 30000);
+
+test('guesses from elsewhere cannot lock the real user out of a browser they already logged in from', async () => {
+  const known = await post({action: 'login', username: 'animatrice', password: initial.animatrice});
+  expect(known.device!.value).toMatch(/^[a-f0-9]{32}\.[a-f0-9]{64}$/);
+  expect(known.device!.options).toEqual({httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: 365 * 86400000});
+  const fromDevice = (value: string, device = known.device!.value) =>
+    post({action: 'login', username: 'animatrice', password: value}, {...forwarded('203.0.113.9'), cookies: {[DEVICE_COOKIE]: device}});
+  for (let i = 0; i < 10; i++)
+    await expect(post({action: 'login', username: 'animatrice', password: 'incorrect'}, forwarded(`198.51.100.${i}`))).rejects.toMatchObject({status: 401});
+  await expect(post({action: 'login', username: 'animatrice', password: initial.animatrice}, forwarded('198.51.100.99'))).rejects.toMatchObject({status: 429});
+  expect((await fromDevice(initial.animatrice)).data.user.username).toBe('animatrice');
+  // Forged or tampered cookies, and another account's, get no exemption.
+  const [nonce, mac] = known.device!.value.split('.');
+  for (const forged of ['0'.repeat(32) + '.' + mac, nonce + '.' + '0'.repeat(64), 'garbage'])
+    await expect(fromDevice(initial.animatrice, forged)).rejects.toMatchObject({status: 429});
+  const manager = await post({action: 'login', username: 'gestion', password: initial.gestion});
+  await expect(fromDevice(initial.animatrice, manager.device!.value)).rejects.toMatchObject({status: 429});
+  // The known browser has its own allowance of 10 failed attempts.
+  for (let i = 0; i < 10; i++) await expect(fromDevice('incorrect')).rejects.toMatchObject({status: 401});
+  await expect(fromDevice(initial.animatrice)).rejects.toMatchObject({status: 429});
 }, 30000);
 
 test('a legacy hash still logs in and is upgraded to the current format, keeping the saved copy', async () => {

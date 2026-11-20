@@ -27,6 +27,18 @@ function sniff(bytes: Uint8Array): string | null {
   return null;
 }
 
+const THUMB = '.thumb';
+
+/**
+ * The optional grid thumbnail the app sends with a photo (a small JPEG, see
+ * app photo-file.ts). Anything else is ignored: the grid then shows the photo.
+ */
+async function thumbnail(value: unknown): Promise<Uint8Array | null> {
+  if (!(value instanceof File) || value.size < 12 || value.size > 150_000) return null;
+  const bytes = new Uint8Array(await value.arrayBuffer());
+  return sniff(bytes) === 'image/jpeg' ? bytes : null;
+}
+
 @Injectable()
 export class PhotosService {
   constructor(private readonly storage: StorageService) {}
@@ -68,6 +80,7 @@ export class PhotosService {
     const bytes = new Uint8Array(await (file as File).arrayBuffer());
     const mime = sniff(bytes);
     if (!mime) fail('Format image non reconnu.');
+    const small = await thumbnail(form.get('thumb'));
     const n = await first<any>(db(), sql`SELECT COUNT(*) AS n FROM tf_photos WHERE mission_id=${m.id} AND purpose='report'`);
     if (purpose === 'report' && n.n >= 15) fail('15 photos de suivi maximum par animation.');
 
@@ -75,6 +88,7 @@ export class PhotosService {
     const objectKey = 'terrain/' + randomUUID();
     const at = iso();
     await this.storage.put(objectKey, bytes, mime!);
+    if (small) await this.storage.put(objectKey + THUMB, small, 'image/jpeg').catch(() => {});
     try {
       const writes = [
         sql`INSERT INTO tf_photos(id,mission_id,user_id,created_at,caption,mime,size,object_key,purpose)
@@ -87,12 +101,13 @@ export class PhotosService {
       await batchMission(u, m, purpose === 'report' ? 'photo.added' : 'clock.' + purpose, writes, {photo, purpose});
     } catch (e) {
       await this.storage.delete(objectKey);
+      if (small) await this.storage.delete(objectKey + THUMB);
       throw e;
     }
     return {ok: true, id: photo, serverTime: at};
   }
 
-  // GET /api/photos?id= — port of getPhoto().
+  // GET /api/photos?id=[&size=thumb] — port of getPhoto().
   async getPhoto(u: User, req: Request, res: Response): Promise<void> {
     if (u.force_change) fail('Changez votre mot de passe.', 403);
     const p = await first<any>(db(), sql`SELECT * FROM tf_photos WHERE id=${uuid.parse(req.query.id)}`);
@@ -103,21 +118,27 @@ export class PhotosService {
 
   /**
    * Streams a stored photo after the caller's access check. A photo id always
-   * names the same bytes, so the browser may keep it (private: never shared
-   * caches) and revalidate by ETag. pipeline() destroys the storage stream when
-   * the client aborts or either side fails, so no file handle or socket leaks.
+   * names the same bytes, so the browser keeps a private copy and revalidates
+   * it by ETag on every view: a reopen costs an empty 304, and the session and
+   * access checks still run each time, so a shared phone does not show photos
+   * once the session is gone. pipeline() destroys the storage stream when the
+   * client aborts or either side fails, so no file handle or socket leaks.
+   * `?size=thumb` serves the grid thumbnail, or the photo itself when it was
+   * uploaded without one (each URL always answers the same bytes).
    */
   private async send(req: Request, res: Response, p: any, extra: Record<string, string> = {}): Promise<void> {
-    const cache = {'Cache-Control': 'private, max-age=31536000, immutable', ETag: `"${p.id}"`};
+    const thumb = req.query?.size === 'thumb';
+    const cache = {'Cache-Control': 'private, no-cache', ETag: `"${p.id}${thumb ? '-thumb' : ''}"`};
     const known = String(req.headers['if-none-match'] || '').split(',');
     if (known.some((tag) => tag.trim().replace(/^W\//, '') === cache.ETag)) {
       res.set(cache).status(304).end();
       return;
     }
     if (!this.storage.configured()) fail('Stockage indisponible.', 503);
-    const file = await this.storage.open(p.object_key);
+    const small = thumb ? await this.storage.open(p.object_key + THUMB, true) : null;
+    const file = small || (await this.storage.open(p.object_key));
     if (!file) fail('Photo indisponible.', 404);
-    res.set({...cache, 'Content-Type': p.mime, 'X-Content-Type-Options': 'nosniff', ...extra});
+    res.set({...cache, 'Content-Type': small ? 'image/jpeg' : p.mime, 'X-Content-Type-Options': 'nosniff', ...extra});
     if (file!.size !== undefined) res.setHeader('Content-Length', String(file!.size));
     pipeline(file!.stream, res, (e) => {
       if (e && (e as any).code !== 'ERR_STREAM_PREMATURE_CLOSE')
@@ -143,9 +164,11 @@ export class PhotosService {
     const bytes = new Uint8Array(await (input as File).arrayBuffer());
     const mime = sniff(bytes);
     if (!mime) fail('Format image non reconnu.');
+    const small = await thumbnail(f.get('thumb'));
     if (!this.storage.configured()) fail('Stockage indisponible.', 503);
     const object = 'terrain-notes/' + randomUUID();
     await this.storage.put(object, bytes, mime!);
+    if (small) await this.storage.put(object + THUMB, small, 'image/jpeg').catch(() => {});
     try {
       await serializable(async (tx) => {
         await run(
@@ -157,6 +180,7 @@ export class PhotosService {
       });
     } catch (e) {
       await this.storage.delete(object);
+      if (small) await this.storage.delete(object + THUMB);
       if (String(e).includes('FIELD_PHOTO_LIMIT')) fail('Cinq photos maximum par observation.');
       throw e;
     }

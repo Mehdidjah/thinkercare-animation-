@@ -3,6 +3,8 @@ import {spawn, spawnSync, type ChildProcess} from 'node:child_process';
 import {EventEmitter} from 'node:events';
 import {existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync} from 'node:fs';
 import {connect, createServer} from 'node:net';
+import {request as httpRequest} from 'node:http';
+import {brotliDecompressSync, gunzipSync} from 'node:zlib';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {PassThrough, Writable} from 'node:stream';
@@ -12,6 +14,7 @@ import {UploadLimiter, UPLOAD_BUSY, withUploadSlot} from '../src/common/upload-l
 import {checkConfig} from '../src/common/config-check';
 import {dayInAlger} from '../src/domain/core';
 import {PhotosService} from '../src/terrain/photos.service';
+import {photoFormData} from '../src/terrain/body';
 
 // Boots the real server (src/main.ts) in a child process against a disposable
 // local Postgres cluster, so headers, static files and routing are checked over
@@ -32,7 +35,8 @@ const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
   "font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' https:; " +
   "connect-src 'self' https:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'";
-const IMMUTABLE_PHOTO = 'private, max-age=31536000, immutable';
+// Kept privately and revalidated on every view, so access checks still run once the session is gone.
+const PHOTO_CACHE = 'private, no-cache';
 const servers: ChildProcess[] = [];
 let env: Record<string, string | undefined> = {};
 let pool: Pool | undefined;
@@ -74,7 +78,7 @@ async function login(username: keyof typeof passwords) {
   const response = await fetch(base + '/api/terrain', {method: 'POST', headers: {origin: base, 'content-type': 'application/json'},
     body: JSON.stringify({action: 'login', username, password: passwords[username]})});
   expect(response.ok).toBe(true); // Nest answers POST with 201
-  return response.headers.get('set-cookie')!.split(';')[0];
+  return response.headers.getSetCookie().find(cookie => cookie.startsWith('__Host-terrain-session='))!.split(';')[0];
 }
 
 function jpeg(size = 2048) {
@@ -83,11 +87,12 @@ function jpeg(size = 2048) {
   return bytes;
 }
 
-function upload(path: string, cookie: string, fields: Record<string, string>, bytes = jpeg()) {
+function upload(path: string, cookie: string, fields: Record<string, string>, bytes = jpeg(), thumb?: Uint8Array) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.set(key, value);
   form.set('no_person', 'true');
   form.set('photo', new File([bytes], 'photo.jpg', {type: 'image/jpeg'}));
+  if (thumb) form.set('thumb', new File([thumb], 'miniature.jpg', {type: 'image/jpeg'}));
   return fetch(base + path, {method: 'POST', headers: {cookie, origin: base}, body: form});
 }
 
@@ -180,6 +185,69 @@ test('security headers cover index.html, SPA routes, static files and API respon
   await anonymous.arrayBuffer();
 }, 30000);
 
+/** Raw HTTP exchange: fetch() would decode the body and hide the encoding. */
+function raw(path: string, headers: Record<string, string>) {
+  return new Promise<{status: number; headers: Record<string, any>; body: Buffer}>((resolve, reject) => {
+    const req = httpRequest(base + path, {headers}, (res) => {
+      const chunks: Buffer[] = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => resolve({status: res.statusCode!, headers: res.headers, body: Buffer.concat(chunks)}));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+test('JSON API answers above 1 KB leave the origin compressed when the client accepts it', async () => {
+  const cookie = await login('gestion');
+  const plain = await raw('/api/terrain', {cookie});
+  expect(plain.headers['content-encoding']).toBeUndefined();
+  expect(plain.body.length).toBeGreaterThan(1024);
+  const products = JSON.parse(plain.body.toString()).products;
+  for (const [accept, encoding, decode] of [['gzip, deflate, br, zstd', 'br', brotliDecompressSync], ['gzip', 'gzip', gunzipSync],
+    ['br;q=0, gzip;q=0.8', 'gzip', gunzipSync]] as const) {
+    const zipped = await raw('/api/terrain', {cookie, 'accept-encoding': accept});
+    expect(zipped.status).toBe(200);
+    expect(zipped.headers['content-encoding']).toBe(encoding);
+    expect(zipped.headers.vary).toContain('Accept-Encoding');
+    expect(zipped.headers['content-type']).toContain('application/json');
+    expect(zipped.headers['cache-control']).toBe('no-store');
+    expect(zipped.body.length).toBeLessThan(plain.body.length / 3);
+    expect(JSON.parse(decode(zipped.body).toString()).products).toEqual(products);
+  }
+  const small = await raw('/api/nope', {'accept-encoding': 'br'});
+  expect(small.status).toBe(404);
+  expect(small.headers['content-encoding']).toBeUndefined();
+  expect(JSON.parse(small.body.toString())).toEqual({error: 'Ressource introuvable.'});
+  const identity = await raw('/api/terrain', {cookie, 'accept-encoding': 'identity'});
+  expect(identity.headers['content-encoding']).toBeUndefined();
+});
+
+test('with PUBLIC_APP_URL, pages opened on the Railway host go to the public front end; API, health and assets do not', async () => {
+  const other = await boot(await freePort(), {PUBLIC_APP_URL: 'https://terrain.example'});
+  try {
+    for (const path of ['/', '/planning/semaine?vue=1']) {
+      const page = await fetch(other.url + path, {redirect: 'manual'});
+      expect(page.status).toBe(308);
+      expect(page.headers.get('location')).toBe('https://terrain.example' + path);
+      expectSecurityHeaders(page);
+    }
+    for (const [path, status] of [['/assets/index-Ab12Cd34.js', 200], ['/healthz', 200], ['/api/terrain', 401], ['/robots.txt', 200]] as const) {
+      const response = await fetch(other.url + path, {redirect: 'manual'});
+      expect(response.status).toBe(status);
+      await response.arrayBuffer();
+    }
+    // Already on the public host (or reached through it): served, no loop.
+    const same = await fetch(other.url + '/', {headers: {host: 'terrain.example'}, redirect: 'manual'});
+    expect(same.status).toBe(200);
+    expect(await same.text()).toContain('<div id="root">');
+  } finally {
+    other.child.kill();
+  }
+  // Unset (as in this suite's main server): the page is served on any host.
+  expect((await fetch(base + '/', {redirect: 'manual'})).status).toBe(200);
+}, 30000);
+
 test('/healthz reports database health, and unknown API paths answer a JSON 404 instead of the SPA', async () => {
   const healthy = await fetch(base + '/healthz');
   expect(healthy.status).toBe(200);
@@ -218,7 +286,7 @@ test('photos are privately cacheable with an ETag and Content-Length, revalidate
     const etag = `"${id}"`;
     const response = await fetch(base + path + id, {headers: {cookie}});
     expect(response.status).toBe(200);
-    expect(response.headers.get('cache-control')).toBe(IMMUTABLE_PHOTO);
+    expect(response.headers.get('cache-control')).toBe(PHOTO_CACHE);
     expect(response.headers.get('etag')).toBe(etag);
     expect(response.headers.get('content-length')).toBe(String(bytes.length));
     expect(response.headers.get('content-type')).toBe('image/jpeg');
@@ -228,7 +296,7 @@ test('photos are privately cacheable with an ETag and Content-Length, revalidate
       const revalidated = await fetch(base + path + id, {headers: {cookie, 'if-none-match': tag}});
       expect(revalidated.status).toBe(304);
       expect(revalidated.headers.get('etag')).toBe(etag);
-      expect(revalidated.headers.get('cache-control')).toBe(IMMUTABLE_PHOTO);
+      expect(revalidated.headers.get('cache-control')).toBe(PHOTO_CACHE);
       expect((await revalidated.arrayBuffer()).byteLength).toBe(0);
     }
     const changed = await fetch(base + path + id, {headers: {cookie, 'if-none-match': `"${randomUUID()}"`}});
@@ -243,6 +311,38 @@ test('photos are privately cacheable with an ETag and Content-Length, revalidate
   }
 }, 30000);
 
+test('grids get the small thumbnail sent with a photo, or the photo itself when it came without one', async () => {
+  const cookie = await login('gestion');
+  const missionId = await mission('completed', '2026-11-15');
+  const noteId = randomUUID();
+  await pool!.query(`INSERT INTO tf_field_notes(id,author_id,category,description,created_at,updated_at)
+    VALUES($1,$2,'shelf','Thumbnail test',$3,$3)`, [noteId, managerId, new Date().toISOString()]);
+  const full = jpeg(60_000), small = jpeg(3_000);
+  const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0, 0]);
+  const withThumb = randomUUID(), without = randomUUID(), wrong = randomUUID(), note = randomUUID();
+  expect((await upload('/api/photos', cookie, {mission_id: missionId, photo_id: withThumb}, full, small)).status).toBe(201);
+  expect((await upload('/api/photos', cookie, {mission_id: missionId, photo_id: without}, full)).status).toBe(201);
+  expect((await upload('/api/photos', cookie, {mission_id: missionId, photo_id: wrong}, full, png)).status).toBe(201);
+  expect((await upload('/api/field-photos', cookie, {note_id: noteId, photo_id: note}, full, small)).status).toBe(201);
+  for (const [path, id, expected] of [['/api/photos?id=', withThumb, small], ['/api/photos?id=', without, full],
+    ['/api/photos?id=', wrong, full], ['/api/field-photos?id=', note, small]] as const) {
+    const response = await fetch(base + path + id + '&size=thumb', {headers: {cookie}});
+    expect(response.status).toBe(200);
+    expect(response.headers.get('etag')).toBe(`"${id}-thumb"`);
+    expect(response.headers.get('content-type')).toBe('image/jpeg');
+    expect(response.headers.get('cache-control')).toBe(PHOTO_CACHE);
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(expected);
+    const revalidated = await fetch(base + path + id + '&size=thumb', {headers: {cookie, 'if-none-match': `"${id}-thumb"`}});
+    expect(revalidated.status).toBe(304);
+    // The full-size link is unchanged.
+    const original = await fetch(base + path + id, {headers: {cookie, 'if-none-match': `"${id}-thumb"`}});
+    expect(original.status).toBe(200);
+    expect(new Uint8Array(await original.arrayBuffer())).toEqual(full);
+  }
+  // A photo uploaded before thumbnails existed is not reported as a storage failure.
+  expect(main.log()).not.toContain('.thumb failed');
+}, 30000);
+
 test('photo streaming destroys the storage stream when the client goes away or the response fails', async () => {
   for (const end of ['abort', 'error'] as const) {
     const source = new PassThrough();
@@ -255,7 +355,7 @@ test('photo streaming destroys the storage stream when the client goes away or t
     try {
       await (service as any).send({headers: {}}, res, {id: randomUUID(), object_key: 'terrain/test', mime: 'image/jpeg'});
       source.write(Buffer.alloc(64 * 1024));
-      expect(res.headers).toMatchObject({'Cache-Control': IMMUTABLE_PHOTO, 'Content-Length': String(1 << 20), 'Content-Type': 'image/jpeg'});
+      expect(res.headers).toMatchObject({'Cache-Control': PHOTO_CACHE, 'Content-Length': String(1 << 20), 'Content-Type': 'image/jpeg'});
       if (end === 'abort') res.destroy();
       else res.destroy(new Error('socket reset'));
       await Bun.sleep(20);
@@ -267,27 +367,71 @@ test('photo streaming destroys the storage stream when the client goes away or t
   }
 });
 
-test('uploads beyond 4 in progress and 8 queued get 503 with Retry-After, and aborted uploads free their slots', async () => {
-  const cookie = await login('gestion');
+test('a phone with stalled uploads holds at most 2 slots: other accounts still upload, and dropped uploads free them without a 500', async () => {
+  const manager = await login('gestion');
+  const field = await login('animatrice');
   const missionId = await mission('completed', '2026-11-14');
   // Raw sockets: headers and the start of a 1 MB body, then nothing more.
-  const stalled = Array.from({length: 12}, () => {
+  const stalled = Array.from({length: 4}, () => {
     const socket = connect(Number(new URL(base).port), '127.0.0.1');
     socket.on('error', () => {});
-    socket.write(`POST /api/photos HTTP/1.1\r\nHost: ${new URL(base).host}\r\nOrigin: ${base}\r\nCookie: ${cookie}\r\n` +
+    socket.write(`POST /api/photos HTTP/1.1\r\nHost: ${new URL(base).host}\r\nOrigin: ${base}\r\nCookie: ${manager}\r\n` +
       'Content-Type: multipart/form-data; boundary=x\r\nContent-Length: 1000000\r\n\r\n--x\r\n');
     return socket;
   });
   await Bun.sleep(2000);
-  const busy = await upload('/api/photos', cookie, {mission_id: missionId, photo_id: randomUUID()});
+  const busy = await upload('/api/photos', manager, {mission_id: missionId, photo_id: randomUUID()});
   expect(busy.status).toBe(503);
   expect(busy.headers.get('retry-after')).toBe('5');
   expect(await busy.json()).toEqual({error: UPLOAD_BUSY});
+  const other = await upload('/api/photos', field, {mission_id: missionId, photo_id: randomUUID()});
+  expect(other.status).toBe(201);
+  await other.arrayBuffer();
   for (const pending of stalled) pending.destroy();
   await Bun.sleep(1500);
-  const next = await upload('/api/photos', cookie, {mission_id: missionId, photo_id: randomUUID()});
+  const next = await upload('/api/photos', manager, {mission_id: missionId, photo_id: randomUUID()});
   expect(next.ok).toBe(true);
+  // A dropped phone connection is answered as a 4xx: only real server faults appear as [http] 500.
+  expect(main.log()).not.toContain('[http] 500');
 }, 30000);
+
+test('a stalled or trickling photo body is cut, so its slot is not held until the server timeout', async () => {
+  const form = new Response((() => {
+    const data = new FormData();
+    data.set('photo', new File([jpeg(1000)], 'photo.jpg', {type: 'image/jpeg'}));
+    return data;
+  })());
+  const type = form.headers.get('content-type')!;
+  const body = Buffer.from(await form.arrayBuffer());
+  const request = (chunks: (Buffer | number)[]) => {
+    const stream = new PassThrough() as any;
+    stream.headers = {'content-type': type, 'content-length': String(body.length)};
+    (async () => {
+      for (const chunk of chunks) {
+        if (typeof chunk === 'number') await Bun.sleep(chunk);
+        else if (!stream.destroyed) stream.write(chunk);
+      }
+    })();
+    return stream;
+  };
+  const started = Date.now();
+  // Nothing after the first bytes: cut after the idle delay.
+  const idle = request([body.subarray(0, 10)]);
+  await expect(photoFormData(idle, 150, 5000)).rejects.toMatchObject({status: 408, message: 'Envoi trop lent. Réessayez.'});
+  expect(idle.destroyed).toBe(true);
+  expect(Date.now() - started).toBeLessThan(1500);
+  // A few bytes every 100 ms never trips the idle delay, but the total deadline still applies.
+  const trickle = request(Array.from({length: 50}, (_, i) => [body.subarray(i, i + 1), 100]).flat());
+  await expect(photoFormData(trickle, 150, 600)).rejects.toMatchObject({status: 408});
+  // A complete body within both delays is parsed as usual.
+  const whole = request([body.subarray(0, 500), 50, body.subarray(500)]);
+  setTimeout(() => whole.end(), 120);
+  expect((await photoFormData(whole, 150, 5000)).get('photo')).toBeInstanceOf(File);
+  // The phone drops the connection mid-body: a 400 the filter does not log, not a 500.
+  const dropped = request([body.subarray(0, 10)]);
+  setTimeout(() => dropped.destroy(new Error('aborted')), 50);
+  await expect(photoFormData(dropped, 5000, 5000)).rejects.toMatchObject({status: 400, message: 'Envoi interrompu. Réessayez.'});
+});
 
 test('check-in is refused before the photo is stored while another animation is still ongoing', async () => {
   const cookie = await login('animatrice');
@@ -309,7 +453,7 @@ test('check-in is refused before the photo is stored while another animation is 
 }, 30000);
 
 test('upload limiter grants slots in order, bounds its queue, times out, honours aborts and releases once', async () => {
-  expect(new UploadLimiter()).toMatchObject({slots: 4, queue: 8, waitMs: 20000});
+  expect(new UploadLimiter()).toMatchObject({slots: 4, queue: 8, waitMs: 20000, perOwner: 2});
   const limiter = new UploadLimiter(2, 2, 200);
   const first = await limiter.acquire();
   const second = await limiter.acquire();
@@ -329,6 +473,30 @@ test('upload limiter grants slots in order, bounds its queue, times out, honours
   expect(limiter.stats()).toEqual({active: 2, waiting: 0});
   second();
   releaseThird();
+  expect(limiter.stats()).toEqual({active: 0, waiting: 0});
+});
+
+test('upload limiter caps each account at 2 uploads, reading or queued, without blocking others', async () => {
+  const limiter = new UploadLimiter(3, 4, 200);
+  const a1 = await limiter.acquire(undefined, 'a');
+  const a2 = await limiter.acquire(undefined, 'a');
+  await expect(limiter.acquire(undefined, 'a')).rejects.toMatchObject({status: 503, message: UPLOAD_BUSY});
+  const b1 = await limiter.acquire(undefined, 'b');
+  // Slots full: b's second upload waits; a third for b is refused at once.
+  const b2 = limiter.acquire(undefined, 'b');
+  await expect(limiter.acquire(undefined, 'b')).rejects.toMatchObject({status: 503});
+  expect(limiter.stats()).toEqual({active: 3, waiting: 1});
+  a1();
+  a1();
+  const releaseB2 = await b2;
+  // Slots full again: a's next upload queues, times out and gives its account count back.
+  await expect(limiter.acquire(undefined, 'a')).rejects.toMatchObject({status: 503});
+  expect(limiter.stats()).toEqual({active: 3, waiting: 0});
+  b1();
+  const a3 = await limiter.acquire(undefined, 'a');
+  a2();
+  a3();
+  releaseB2();
   expect(limiter.stats()).toEqual({active: 0, waiting: 0});
 });
 
@@ -368,12 +536,14 @@ test('boot configuration report flags missing settings without printing secrets'
     lines.length = 0;
     const secret = 'secret-' + randomUUID();
     expect(await checkConfig({DATABASE_URL: `postgres://user:${secret}@db/terrain`, ACCOUNT_PASSWORD_KEY: 'short',
-      S3_BUCKET: 'photos', S3_SECRET_ACCESS_KEY: secret, APP_ORIGIN: 'https://ok.example, https://bad.example/path'})).toBe(true);
+      S3_BUCKET: 'photos', S3_SECRET_ACCESS_KEY: secret, APP_ORIGIN: 'https://ok.example, https://bad.example/path',
+      PUBLIC_APP_URL: 'http://app.example/'})).toBe(true);
     const report = lines.join('\n');
     expect(report).toContain('error [config] ACCOUNT_PASSWORD_KEY is missing or is not 64 hex characters');
     expect(report).toContain('error [config] incomplete S3 configuration (only S3_BUCKET, S3_SECRET_ACCESS_KEY set)');
     expect(report).toContain('error [config] no photo storage configured');
     expect(report).toContain('warn [config] APP_ORIGIN entry "https://bad.example/path"');
+    expect(report).toContain('warn [config] PUBLIC_APP_URL "http://app.example/" is not a bare https origin');
     expect(report).not.toContain(secret);
     lines.length = 0;
     const probe = join(directory, 'probe');

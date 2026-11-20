@@ -11,6 +11,7 @@ import {HttpExceptionFilter} from './common/http-exception.filter';
 import {AppError} from './common/errors';
 import {checkConfig} from './common/config-check';
 import {isApi, securityHeaders} from './common/security-headers.middleware';
+import {compressJson} from './common/compress-json';
 import {getPool} from './db/client';
 import type {Request, Response, NextFunction} from 'express';
 
@@ -30,6 +31,16 @@ function staticCache(staticDir: string) {
     else if (/\.(js|css)$/.test(path)) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     else res.setHeader('Cache-Control', 'public, max-age=86400');
   };
+}
+
+/** PUBLIC_APP_URL as an origin, or null when unset or not a bare https origin (reported by checkConfig). */
+function publicOrigin(value: string | undefined): URL | null {
+  try {
+    const url = new URL(value || '');
+    return url.protocol === 'https:' && url.origin === value ? url : null;
+  } catch {
+    return null;
+  }
 }
 
 async function healthz(_req: Request, res: Response) {
@@ -64,6 +75,7 @@ async function bootstrap() {
 
   // First, so API responses, static files and the SPA fallback all carry them.
   app.use(securityHeaders);
+  app.use('/api', compressJson);
   app.use(cookieParser());
   // Raw text body only for /api/terrain (GET has none; POST gets the string).
   app.use('/api/terrain', express.text({type: () => true, limit: '1mb'}));
@@ -94,8 +106,13 @@ async function bootstrap() {
 
   // SPA fallback: any non-API GET that is not a static file returns index.html.
   // Unknown /api paths fall through to Nest's 404 (ApiExceptionFilter).
+  // With PUBLIC_APP_URL (the Vercel front end), a page opened on another host —
+  // this service's own Railway URL — is sent there, where the app loads from the
+  // CDN; /api, /healthz and static files are served as before.
+  const publicApp = publicOrigin(process.env.PUBLIC_APP_URL);
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== 'GET' || isApi(req.originalUrl) || !existsSync(indexHtml)) return next();
+    if (publicApp && req.get('host') !== publicApp.host) return res.redirect(308, publicApp.origin + req.originalUrl);
     res.setHeader('Cache-Control', 'no-cache');
     // Relative to root: without it, send() refuses any absolute path containing a dot-directory.
     res.sendFile('index.html', {root: staticDir});

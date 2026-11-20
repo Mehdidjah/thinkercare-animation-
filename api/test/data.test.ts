@@ -175,6 +175,11 @@ test('bootstrap prefetches exactly the planning week the missions action returns
     expect({...boot.prefetch.missions.data, serverTime: 0}).toEqual({...direct, serverTime: 0});
     expect(boot.prefetch.missions.data.missions.length).toBeGreaterThan(0);
     expect(typeof boot.prefetch.missions.data.serverTime).toBe('string');
+    // The other read the first screen polls: the bonus strip (animatrice) or the attendance alerts (managers).
+    const side = u.role === 'field' ? 'bonuses' : 'attendance-alerts';
+    expect(Object.keys(boot.prefetch).sort()).toEqual([side, 'missions'].sort());
+    expect(boot.prefetch[side].query).toBe('action=' + side);
+    expect({...boot.prefetch[side].data, serverTime: 0}).toEqual({...(await terrain.getTerrain(u, q('action=' + side))), serverTime: 0});
   }
   expect((await terrain.getTerrain(doctor, q(''))).prefetch).toBeUndefined();
   expect((await terrain.getTerrain({...field, force_change: 1}, q(''))).prefetch).toBeUndefined();
@@ -240,6 +245,33 @@ test('missing_end alerts survive the 8-day window, can be acknowledged, skip ina
   expect(await failure(terrain.postTerrain(manager, {...close('09:00'), id: future}))).toEqual({status: 400, body: {error: 'L’heure de départ ne peut pas être dans le futur.'}});
   const planned = await addMission({field: worker.id, day: today});
   expect(await failure(terrain.postTerrain(manager, {...close('09:00'), id: planned}))).toEqual({status: 400, body: {error: 'Seule une animation commencée peut être clôturée.'}});
+});
+
+test('an idle database connection closed by the server is logged, not fatal, and the next query reconnects', async () => {
+  const lines = await captureLogs(async () => {
+    const pid = (await pool().query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+    const other = new Pool({connectionString: process.env.DATABASE_URL});
+    await other.query('SELECT pg_terminate_backend($1)', [pid]);
+    await other.end();
+    await pause(300);
+  });
+  expect(lines.some((line) => line.startsWith('[db] idle connection lost:'))).toBe(true);
+  expect((await pool().query('SELECT 1 AS ok')).rows[0].ok).toBe(1);
+});
+
+test('deactivating an animatrice lists the visits still to reassign, cancel or close', async () => {
+  const worker = await fieldUser();
+  const tomorrow = await addMission({field: worker.id, day: shiftDay(today, 1)});
+  const later = await addMission({field: worker.id, day: today, start: '16:00', end: '18:00'});
+  const open = await addMission({field: worker.id, day: shiftDay(today, -2), status: 'ongoing', actualStart: at(shiftDay(today, -2), '08:00')});
+  await addMission({field: worker.id, day: shiftDay(today, -3)}); // missed in the past: nothing left to do
+  await addMission({field: worker.id, day: shiftDay(today, 2), status: 'cancelled'});
+  const body = (active: boolean) => ({action: 'user', id: worker.id, username: worker.username, label: worker.label, role: 'field', active});
+  const result = await terrain.postTerrain(admin, body(false));
+  expect(result.pending.map((m: any) => m.id)).toEqual([open, later, tomorrow]);
+  expect(result.pending[0]).toMatchObject({status: 'ongoing', store_name: 'Pharmacie des tests', day: shiftDay(today, -2)});
+  expect((await terrain.postTerrain(admin, body(false))).pending).toEqual([]); // already inactive
+  expect((await terrain.postTerrain(admin, body(true))).pending).toEqual([]);
 });
 
 test('a second ongoing mission maps to the explicit check-in message (C7 race fallback)', async () => {
@@ -323,13 +355,18 @@ test('voiding a sale restores the remembered store price it had set', async () =
   const typo = await sale([{product_id: p, qty: 1, unit_price: 18}, {product_id: other, qty: 2, unit_price: 500}]);
   expect([await price(p), await price(other)]).toEqual([18, 500]);
   await voidSale(typo);
-  // p returns to the last valid sale; other had no other sale, so it is left as it was.
-  expect([await price(p), await price(other)]).toEqual([180000, 500]);
+  // p returns to the last valid sale; other had no other sale, so its price is forgotten (catalogue price next time).
+  expect([await price(p), await price(other)]).toEqual([180000, undefined]);
   const later = await sale([{product_id: p, qty: 1, unit_price: 175000}]);
   await voidSale(good);
   expect(await price(p)).toBe(175000); // set by a later sale: untouched by voiding an older one
   await voidSale(later);
-  expect(await price(p)).toBe(175000); // no valid sale left: unchanged
+  expect(await price(p)).toBeUndefined(); // no valid sale left
+  // A first sale typed wrong and voided leaves no remembered price behind.
+  const first = await sale([{product_id: other, qty: 1, unit_price: 9}]);
+  expect(await price(other)).toBe(9);
+  await voidSale(first);
+  expect(await price(other)).toBeUndefined();
 });
 
 test('stock sheets save in one statement with the same per-row rules', async () => {
@@ -463,3 +500,21 @@ test('migration 0002 applies on a fresh database and on one already at 0001 with
     await before.end();
   }
 }, 60000);
+
+test('re-applying the integrity triggers at boot takes no table lock when they are unchanged', async () => {
+  const reader = await pool().connect();
+  const writer = new Pool({connectionString: process.env.DATABASE_URL, max: 1});
+  try {
+    // A long report query still running on the previous deployment.
+    await reader.query('BEGIN');
+    await reader.query('SELECT 1 FROM tf_missions, tf_counts, tf_tickets, tf_field_photos LIMIT 1');
+    await writer.query("SET lock_timeout = '1s'");
+    await writer.query(readFileSync(join(root, 'src/db/triggers.sql'), 'utf8'));
+  } finally {
+    await reader.query('ROLLBACK');
+    reader.release();
+    await writer.end();
+  }
+  const triggers = (await pool().query('SELECT tgname FROM pg_trigger WHERE NOT tgisinternal ORDER BY tgname')).rows.map((r) => r.tgname);
+  expect(triggers).toEqual(['tf_counts_editable', 'tf_field_photo_limit', 'tf_ticket_stock', 'tf_tickets_editable']);
+});

@@ -30,11 +30,16 @@ export function getPool(): Pool {
       connectionTimeoutMillis: 10000,
       // Low, bursty traffic: keep connections across the app's 20 s polling gaps
       // instead of reconnecting (pg's default closes them after 10 s idle).
-      idleTimeoutMillis: 300000,
+      idleTimeoutMillis: 60000,
       keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
       // Server-side cap per statement; migrate.ts disables it (PG_STATEMENT_TIMEOUT_MS=0).
       statement_timeout: Number(process.env.PG_STATEMENT_TIMEOUT_MS ?? 30000) || undefined,
     });
+    // An idle connection closed by Postgres (restart, failover, network reset) is
+    // re-emitted here; without a listener Node would exit. pg-pool has already
+    // dropped that client, and the next query opens a new one.
+    pool.on('error', (e) => console.warn('[db] idle connection lost:', e.message));
   }
   return pool;
 }

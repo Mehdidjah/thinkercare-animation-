@@ -22,8 +22,8 @@ export const CONTENT_SECURITY_POLICY =
  * the headers: API, static files, index.html and the SPA fallback.
  *
  * API responses additionally get `no-store` + `noindex` (the `j()`/`json()`
- * headers from the originals). Photo GETs replace Cache-Control with a private
- * immutable policy (photo ids never change). The full path comes from
+ * headers from the originals). Photo GETs replace Cache-Control with a private,
+ * revalidated policy (ETag = photo id). The full path comes from
  * originalUrl: req.path is mount-relative inside mounted middleware.
  */
 export function securityHeaders(req: Request, res: Response, next: NextFunction) {

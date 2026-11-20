@@ -46,6 +46,8 @@ export async function checkConfig(env: NodeJS.ProcessEnv = process.env): Promise
     console.warn('[config] APP_ORIGIN is not set: only same-host POSTs are accepted, so logins through the Vercel front end get 403.');
   for (const o of origins)
     if (!isOrigin(o)) console.warn(`[config] APP_ORIGIN entry "${o}" is not a bare origin (e.g. https://app.vercel.app) and never matches.`);
+  if (env.PUBLIC_APP_URL && !(isOrigin(env.PUBLIC_APP_URL) && env.PUBLIC_APP_URL.startsWith('https://')))
+    console.warn(`[config] PUBLIC_APP_URL "${env.PUBLIC_APP_URL}" is not a bare https origin: pages opened on this host are not redirected.`);
   return true;
 }
 

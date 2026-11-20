@@ -1,7 +1,11 @@
 -- ThinkerCare Terrain integrity triggers, ported from the SQLite originals
 -- 0002_terrain.sql, 0004_terrain_workflow.sql and 0005_service_primes_terrain.sql
 -- (git history: 710d9ea:app/migrations/) to PL/pgSQL. Applied by dist/db/migrate.js
--- AFTER the Drizzle schema migrations. Idempotent (CREATE OR REPLACE + drop/recreate).
+-- AFTER the Drizzle schema migrations, on every boot. Idempotent and lock-light:
+-- functions are CREATE OR REPLACE'd, and a trigger is only created when missing,
+-- so an unchanged boot takes no table lock (DROP TRIGGER would take an ACCESS
+-- EXCLUSIVE lock on the table). To change a trigger's events or timing, drop it
+-- explicitly above its CREATE so the next boot recreates it.
 --
 -- Semantics preserved exactly:
 --   tf_no_overlap        -> SCHEDULE_CONFLICT  (animatrice / Dermoscan double-booking)
@@ -16,11 +20,15 @@
 -- allowed — the same animatrice (or the same Dermoscan) may be programmed on
 -- overlapping horaires. We drop both the trigger AND its function so that
 -- existing databases have the restriction removed on the next deploy, and
--- fresh databases never install it. Both DROPs are idempotent.
+-- fresh databases never install it. Both steps are no-ops once done.
 -- To re-enable: restore the tf_no_overlap() function and a BEFORE INSERT OR
 -- UPDATE trigger on tf_missions that RAISE EXCEPTION 'SCHEDULE_CONFLICT' when a
 -- non-cancelled mission overlaps another for the same field_id or device_id.
-DROP TRIGGER IF EXISTS tf_no_overlap ON tf_missions;
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tf_no_overlap' AND tgrelid = 'tf_missions'::regclass) THEN
+    DROP TRIGGER tf_no_overlap ON tf_missions;
+  END IF;
+END $$;
 DROP FUNCTION IF EXISTS tf_no_overlap();
 
 -- ---------------------------------------------------------------------------
@@ -40,10 +48,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS tf_counts_editable ON tf_counts;
-CREATE TRIGGER tf_counts_editable
-  BEFORE INSERT OR UPDATE ON tf_counts
-  FOR EACH ROW EXECUTE FUNCTION tf_counts_editable();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tf_counts_editable' AND tgrelid = 'tf_counts'::regclass) THEN
+    CREATE TRIGGER tf_counts_editable
+      BEFORE INSERT OR UPDATE ON tf_counts
+      FOR EACH ROW EXECUTE FUNCTION tf_counts_editable();
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Report lock for sales tickets (same editable window).
@@ -61,10 +72,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS tf_tickets_editable ON tf_tickets;
-CREATE TRIGGER tf_tickets_editable
-  BEFORE INSERT OR UPDATE ON tf_tickets
-  FOR EACH ROW EXECUTE FUNCTION tf_tickets_editable();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tf_tickets_editable' AND tgrelid = 'tf_tickets'::regclass) THEN
+    CREATE TRIGGER tf_tickets_editable
+      BEFORE INSERT OR UPDATE ON tf_tickets
+      FOR EACH ROW EXECUTE FUNCTION tf_tickets_editable();
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Oversell prevention (0004 revision): for each sold line that HAS a count row,
@@ -94,10 +108,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS tf_ticket_stock ON tf_tickets;
-CREATE TRIGGER tf_ticket_stock
-  BEFORE INSERT ON tf_tickets
-  FOR EACH ROW EXECUTE FUNCTION tf_ticket_stock();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tf_ticket_stock' AND tgrelid = 'tf_tickets'::regclass) THEN
+    CREATE TRIGGER tf_ticket_stock
+      BEFORE INSERT ON tf_tickets
+      FOR EACH ROW EXECUTE FUNCTION tf_ticket_stock();
+  END IF;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- Field-observation photo cap: at most 5 photos per note.
@@ -110,7 +127,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS tf_field_photo_limit ON tf_field_photos;
-CREATE TRIGGER tf_field_photo_limit
-  BEFORE INSERT ON tf_field_photos
-  FOR EACH ROW EXECUTE FUNCTION tf_field_photo_limit();
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'tf_field_photo_limit' AND tgrelid = 'tf_field_photos'::regclass) THEN
+    CREATE TRIGGER tf_field_photo_limit
+      BEFORE INSERT ON tf_field_photos
+      FOR EACH ROW EXECUTE FUNCTION tf_field_photo_limit();
+  END IF;
+END $$;
