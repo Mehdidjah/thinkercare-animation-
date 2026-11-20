@@ -19,12 +19,21 @@ const client = createRequestCache(send);
 const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel('terrain-data-changed');
 const authListeners = new Set<() => void>();
 const sessionListeners = new Set<() => void>();
+const logoutListeners = new Set<() => void>();
 let owner: string | null = null;
 let expired = false;
 if (channel) channel.onmessage = event => {
   if (event.data === 'session') {client.clear(); sessionListeners.forEach(listener => listener());}
+  // A deliberate logout elsewhere logs this tab out too: no "session expired" prompt, nothing kept.
+  else if (event.data === 'logout') {loggedOut(); logoutListeners.forEach(listener => listener());}
   else {client.invalidate(); client.notify();}
 };
+
+function loggedOut() {
+  expired = true;
+  owner = null;
+  client.clear();
+}
 
 function subscribe(set: Set<() => void>, listener: () => void) {
   set.add(listener);
@@ -34,8 +43,10 @@ export const cachedResult = client.cached;
 export const onDataChange = client.subscribe;
 /** Any 401 outside the login form: the session is gone, ask to log in again. */
 export const onAuthRequired = (listener: () => void) => subscribe(authListeners, listener);
-/** Another tab logged in or out. */
+/** Another tab logged in. */
 export const onSessionChange = (listener: () => void) => subscribe(sessionListeners, listener);
+/** Another tab logged out. */
+export const onLogout = (listener: () => void) => subscribe(logoutListeners, listener);
 export const sessionExpired = () => expired;
 
 function failed(error: unknown, login = false) {
@@ -47,14 +58,17 @@ function failed(error: unknown, login = false) {
 }
 
 // Bootstrap and login answers carry the account: a different account drops
-// every cached read, and the week's missions sent along are reused as is.
+// every cached read, and the reads sent along (the week's missions, plus the
+// bonus strip or the attendance alerts) are reused as is.
 function session(result: any) {
   const wasExpired = expired, id = typeof result?.user?.id === 'string' ? result.user.id : null;
   expired = false;
   if (id !== owner) {client.clear(); owner = id;}
-  const prefetch = result?.prefetch?.missions;
-  if (typeof prefetch?.query === 'string' && new URLSearchParams(prefetch.query).get('action') === 'missions' && Array.isArray(prefetch.data?.missions)) {
-    client.prime(prefetch.query, prefetch.data);
+  for (const [action, sent] of Object.entries<any>(result?.prefetch && typeof result.prefetch === 'object' ? result.prefetch : {})) {
+    if (typeof sent?.query !== 'string' || new URLSearchParams(sent.query).get('action') !== action) continue;
+    const rows = action === 'missions' ? 'missions' : action === 'attendance-alerts' ? 'alerts' : '';
+    if (rows && !Array.isArray(sent.data?.[rows])) continue;
+    try {client.prime(sent.query, checkedResult(sent.query, sent.data));} catch {/* refetched by its screen */}
   }
   if (wasExpired) client.notify();
 }
@@ -74,19 +88,21 @@ export async function request(action = '', body?: any, options?: {fresh?: boolea
   }
 }
 
-/** Multipart photo POST: counts as a write (screens refresh, other tabs too). */
+/** Multipart photo POST: invalidates like a save (screens refresh, other tabs too),
+ * but reads are not held back meanwhile, as a photo can take a while on mobile data. */
 export async function upload(path: '/api/photos' | '/api/field-photos', body: FormData) {
   channel?.postMessage('invalidate');
+  client.invalidate();
   try {
-    return await client.write(async () => {
-      const response = await fetch(path, {method: 'POST', body, credentials: 'same-origin'}).catch(() => {
-        throw unsure('Envoi non confirmé. Vérifiez votre connexion puis réessayez.');
-      });
-      return readJson(response);
+    const response = await fetch(path, {method: 'POST', body, credentials: 'same-origin'}).catch(() => {
+      throw unsure('Envoi non confirmé. Vérifiez votre connexion puis réessayez.');
     });
+    return await readJson(response);
   } catch (error) {
     throw failed(error);
   } finally {
+    client.invalidate();
+    client.notify();
     channel?.postMessage('invalidate');
   }
 }
@@ -101,8 +117,7 @@ export async function logout() {
   } catch (error) {
     if ((error as {status?: number})?.status !== 401) throw error;
   } finally {
-    owner = null;
-    client.clear();
-    channel?.postMessage('session');
+    loggedOut();
+    channel?.postMessage('logout');
   }
 }

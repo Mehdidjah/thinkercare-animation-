@@ -132,13 +132,18 @@ test('failed writes invalidate cached state too', async () => {
   expect(await client.request('action=performance')).toEqual({revision: 2});
 });
 
-test('photo uploads go through write(): they invalidate like any other save', async () => {
+test('an invalidation (photo upload) marks results stale and re-issues reads in flight, without holding new reads', async () => {
+  const first = deferred();
   let reads = 0;
-  const client = createRequestCache(async () => ({revision: ++reads}));
-  await client.request('action=missions');
-  await client.write(async () => ({ok: true, id: 'photo'}));
+  const client = createRequestCache(async () => (++reads === 1 ? first.promise : {revision: reads}));
+  const inFlight = client.request('action=missions');
+  client.invalidate();
+  expect(await client.request('action=bonuses')).toEqual({revision: 2});
+  first.resolve({revision: 'before the upload'});
+  expect(await inFlight).toEqual({revision: 3});
+  client.invalidate();
   expect(client.peek('action=missions')?.stale).toBe(true);
-  expect(await client.request('action=missions')).toEqual({revision: 2});
+  expect(await client.request('action=missions')).toEqual({revision: 4});
 });
 
 test('authentication/authorization failures discard every cached result and are not cached', async () => {
@@ -156,10 +161,10 @@ test('authentication/authorization failures discard every cached result and are 
   expect(calls).toBe(3);
 });
 
-test('bootstrap, credentials, individual records and audit data are never cached', async () => {
+test('bootstrap, credentials, audit data and medical case details are never cached', async () => {
   let calls = 0;
   const client = createRequestCache(async () => ({revision: ++calls}));
-  for (const query of ['', 'action=bootstrap', 'action=user-password', 'action=mission&id=test', 'action=audit', 'action=service-detail&id=test']) {
+  for (const query of ['', 'action=bootstrap', 'action=user-password', 'action=audit', 'action=service-detail&id=test', 'action=field-note&id=test']) {
     const before = calls;
     await client.request(query);
     await client.request(query);
@@ -168,6 +173,17 @@ test('bootstrap, credentials, individual records and audit data are never cached
     client.prime(query, {primed: true});
     expect(client.cached(query)).toBeUndefined();
   }
+});
+
+test('a mission sheet reopened shows its last result at once and is refreshed after a save', async () => {
+  let revision = 1, calls = 0;
+  const client = createRequestCache(async (_query, body) => body ? {ok: true} : {revision, calls: ++calls});
+  expect(await client.request('action=mission&id=m1')).toEqual({revision: 1, calls: 1});
+  expect(client.cached('action=mission&id=m1')).toEqual({revision: 1, calls: 1});
+  revision = 2;
+  await client.request('', {action: 'sale'});
+  expect(client.cached('action=mission&id=m1')).toEqual({revision: 1, calls: 1});
+  expect(await client.request('action=mission&id=m1')).toEqual({revision: 2, calls: 2});
 });
 
 test('the week sent with bootstrap primes the planning query, whatever the parameter order', async () => {

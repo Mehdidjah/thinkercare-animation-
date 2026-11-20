@@ -202,7 +202,7 @@ return <>
      {n.photo_id?<img
        loading="lazy"
        decoding="async"
-       src={photoPath(n.photo_id)}
+       src={photoPath(n.photo_id)+'&size=thumb'}
        alt={NOTE_TYPES[n.category]+' · '+n.store_name}/>:<div className="note-photo-empty">
       {NOTE_TYPES[n.category]}</div>}
      <div>
@@ -268,7 +268,7 @@ return <Dialog
        href={photoPath(p.id)}
        target="_blank"
        rel="noreferrer">
-      <img loading="lazy" decoding="async" src={photoPath(p.id)} alt={'Rayon ou produit — '+n.store_name}/></a>)}</div>
+      <img loading="lazy" decoding="async" src={photoPath(p.id)+'&size=thumb'} alt={'Rayon ou produit — '+n.store_name}/></a>)}</div>
 
     {r.data.photos.length<5&&<details className="ops-details">
      <summary>Ajouter une photo</summary>

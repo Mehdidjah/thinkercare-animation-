@@ -1,4 +1,4 @@
-import {compress, validatePhoto} from './photo-file';
+import {attachPhoto, compress, validatePhoto} from './photo-file';
 import {upload} from './client';
 
 export interface PickedPhoto {
@@ -19,7 +19,7 @@ export async function sendFieldPhoto(noteId: string, selected: PickedPhoto): Pro
   const body = new FormData();
   body.set('note_id', noteId);
   body.set('photo_id', selected.id);
-  body.set('photo', await compress(selected.file), 'rayon.jpg');
+  await attachPhoto(body, await compress(selected.file), 'rayon.jpg');
   body.set('no_person', 'true');
   const result = await upload('/api/field-photos', body);
   if (result.ok !== true) throw new Error('Photo non enregistrée. Réessayez cette photo.');

@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {PHOTO_MAX_BYTES, UPLOAD_MAX_BYTES, shrink, validatePhoto} from '../src/terrain/ui/photo-file';
+import {PHOTO_MAX_BYTES, THUMB_MAX_BYTES, UPLOAD_MAX_BYTES, attachPhoto, fit, shrink, validatePhoto} from '../src/terrain/ui/photo-file';
 
 test('photo selectors accept files up to 20 MB and reject files above the limit', () => {
   const image = new File([new Uint8Array(PHOTO_MAX_BYTES)], 'large.jpg', {type: 'image/jpeg'});
@@ -55,4 +55,27 @@ test('a photo that never fits is refused instead of sending an oversized upload'
   const {calls, encode} = encoder(50);
   await expect(shrink(4000, 3000, encode)).rejects.toThrow('trop volumineuse');
   expect(calls).toHaveLength(5);
+});
+
+test('grid thumbnails keep the proportions within 480 px and never enlarge', () => {
+  expect(fit(1280, 960, 480)).toEqual([480, 360]);
+  expect(fit(960, 1280, 480)).toEqual([360, 480]);
+  expect(fit(300, 200, 480)).toEqual([300, 200]);
+  expect(fit(5000, 1, 480)).toEqual([480, 1]);
+});
+
+test('an upload carries its thumbnail when one could be made and is small enough', async () => {
+  const photo = new Blob([new Uint8Array(1000)], {type: 'image/jpeg'});
+  const sent = async (thumbnail: Blob | null) => {
+    const body = new FormData();
+    await attachPhoto(body, photo, 'stock.jpg', async () => thumbnail);
+    return {photo: body.get('photo') as File, thumb: body.get('thumb') as File | null};
+  };
+  const ok = await sent(new Blob([new Uint8Array(200)], {type: 'image/jpeg'}));
+  expect([ok.photo.name, ok.photo.size, ok.thumb?.name, ok.thumb?.size]).toEqual(['stock.jpg', 1000, 'miniature.jpg', 200]);
+  for (const without of [null, new Blob([]), new Blob([new Uint8Array(THUMB_MAX_BYTES + 1)])]) {
+    const result = await sent(without);
+    expect(result.photo.size).toBe(1000);
+    expect(result.thumb).toBeNull();
+  }
 });

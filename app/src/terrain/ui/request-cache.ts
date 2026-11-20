@@ -2,7 +2,8 @@ type Options = {fresh?: boolean; maxAge?: number};
 type Transport = (query: string, body?: any) => Promise<any>;
 const CACHE_MS = 15000;
 const MAX_ENTRIES = 40;
-const CACHEABLE = new Set(['missions', 'attendance-alerts', 'performance', 'bonuses', 'service-list', 'field-notes', 'stocks', 'reports']);
+// Mission sheets too: reopening one shows it at once while it refreshes.
+const CACHEABLE = new Set(['missions', 'mission', 'attendance-alerts', 'performance', 'bonuses', 'service-list', 'field-notes', 'stocks', 'reports']);
 
 /** In-memory, stale-while-revalidate reads. Credentials and account/bootstrap
  * data are never cached. A write marks every entry stale (screens keep showing

@@ -25,6 +25,40 @@ export async function shrink(width: number, height: number, encode: Encode): Pro
   throw new Error('La photo reste trop volumineuse. Choisissez une image plus petite.');
 }
 
+// Grid thumbnails: about 30–60 KB instead of the full photo in 150–210 px tiles.
+export const THUMB_SIDE = 480;
+export const THUMB_MAX_BYTES = 150_000;
+
+/** Width and height scaled so the longest side is at most `side`; never enlarges. */
+export function fit(width: number, height: number, side: number): [number, number] {
+  const scale = Math.min(1, side / Math.max(width, height));
+  return [Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale))];
+}
+
+/** Small JPEG of an already compressed photo, or null when the browser cannot make one (the grid then shows the photo). */
+export async function thumbnail(photo: Blob): Promise<Blob | null> {
+  try {
+    const image = await createImageBitmap(photo);
+    try {
+      const canvas = document.createElement('canvas');
+      [canvas.width, canvas.height] = fit(image.width, image.height, THUMB_SIDE);
+      canvas.getContext('2d')!.drawImage(image, 0, 0, canvas.width, canvas.height);
+      return await new Promise<Blob | null>(ok => canvas.toBlob(ok, 'image/jpeg', 0.7));
+    } finally {
+      image.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+/** Puts the photo and, when it could be made, its grid thumbnail in an upload form. */
+export async function attachPhoto(body: FormData, photo: Blob, name: string, makeThumbnail = thumbnail): Promise<void> {
+  body.set('photo', photo, name);
+  const small = await makeThumbnail(photo);
+  if (small && small.size && small.size <= THUMB_MAX_BYTES) body.set('thumb', small, 'miniature.jpg');
+}
+
 /** The single compressor used by every photo upload (pointage, suivi, retours terrain). */
 export async function compress(file: File): Promise<Blob> {
   validatePhoto(file);
