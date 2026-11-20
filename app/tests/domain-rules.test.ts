@@ -71,6 +71,41 @@ test('attendance alerts and clock rules', () => {
   for (const u of [{id: 'f2', role: 'field'}, {id: 'f1', role: 'admin'}, {id: 'f1', role: 'doctor'}]) expect(c.clockIssue(u as any, m as any, 'checkin', at)).toBeTruthy();
   expect(c.clockIssue(field as any, m as any, 'checkin', '2026-11-15T07:00:00Z')).toBeTruthy();
   expect(c.clockIssue(field as any, m as any, 'checkout', at)).toBeTruthy();
-  expect(c.clockIssue(field as any, {...m, status: 'ongoing', actual_start: at} as any, 'checkout', at)).toBeNull();
+  expect(c.clockIssue(field as any, {...m, status: 'ongoing', actual_start: at, midway_at: '2026-11-14T11:30:00.000Z'} as any, 'checkout', '2026-11-14T11:31:00.000Z')).toBeNull();
   expect(c.clockIssue(field as any, {...m, status: 'completed', actual_start: at} as any, 'checkout', at)).toBeTruthy();
+});
+
+test('middle photo: halfway through the planned slot, once, before the departure', () => {
+  // Planned 09:00–17:00 Alger: the middle photo unlocks at 13:00 Alger.
+  const m = {id: 'm1', field_id: 'f1', day: '2026-11-14', start_at: '2026-11-14T08:00:00.000Z', end_at: '2026-11-14T16:00:00.000Z',
+    status: 'ongoing', actual_start: '2026-11-14T08:02:00.000Z', midway_at: null, late_grace_minutes: 15};
+  const later = '2026-11-14T14:00:00.000Z', done = {...m, midway_at: '2026-11-14T12:05:00.000Z'};
+  expect(c.midwayTime(m)).toBe('2026-11-14T12:00:00.000Z');
+  expect(c.clock(c.midwayTime(m))).toBe('13:00');
+  expect(c.midwayTime({start_at: '2026-11-14T08:00:00.000Z', end_at: '2026-11-14T08:45:00.000Z'})).toBe('2026-11-14T08:22:30.000Z');
+  expect(c.midwayTime({start_at: '2026-11-14T21:00:00.000Z', end_at: '2026-11-15T03:00:00.000Z'})).toBe('2026-11-15T00:00:00.000Z');
+  // Too early, then open from the unlock minute on.
+  expect(c.clockIssue(field as any, m, 'midway', '2026-11-14T11:59:59.000Z')).toBe('La photo du milieu sera disponible à 13:00.');
+  for (const now of ['2026-11-14T12:00:00.000Z', later, '2026-11-14T18:00:00.000Z']) expect(c.clockIssue(field as any, m, 'midway', now)).toBeNull();
+  // Only the assigned animatrice.
+  for (const u of [other, admin, manager, doctor, {id: 'f1', role: 'manager'}]) expect(c.clockIssue(u as any, m, 'midway', later)).toBe('Le pointage appartient à l’animatrice assignée.');
+  // Only while ongoing, after a recorded arrival.
+  for (const status of ['planned', 'completed', 'cancelled']) expect(c.clockIssue(field as any, {...m, status}, 'midway', later)).toBe('Pointez votre arrivée avant la photo du milieu.');
+  expect(c.clockIssue(field as any, {...m, actual_start: null}, 'midway', later)).toBe('Pointez votre arrivée avant la photo du milieu.');
+  // Once.
+  expect(c.clockIssue(field as any, done, 'midway', later)).toBe('La photo du milieu est déjà enregistrée.');
+  expect(c.clockIssue(field as any, {...done, status: 'completed'}, 'midway', later)).toBe('La photo du milieu est déjà enregistrée.');
+  // The departure waits for the middle photo, with the unlock time while it is still ahead.
+  expect(c.clockIssue(field as any, m, 'checkout', '2026-11-14T10:00:00.000Z')).toBe('Prenez d’abord la photo du milieu (disponible à 13:00).');
+  expect(c.clockIssue(field as any, m, 'checkout', later)).toBe('Prenez d’abord la photo du milieu.');
+  expect(c.clockIssue(field as any, done, 'checkout', '2026-11-14T12:06:00.000Z')).toBeNull();
+  expect(c.clockIssue(other as any, done, 'checkout', later)).toBe('Le pointage appartient à l’animatrice assignée.');
+  expect(c.clockIssue(field as any, {...done, status: 'completed', actual_end: later}, 'checkout', later)).toBe('Pointez votre arrivée avant votre départ.');
+  // Arrival after the midpoint: the middle photo is available at once.
+  const late = {...m, actual_start: '2026-11-14T14:10:00.000Z'};
+  expect(c.clockIssue(field as any, late, 'midway', '2026-11-14T14:10:05.000Z')).toBeNull();
+  expect(c.clockIssue(field as any, late, 'checkout', '2026-11-14T14:10:05.000Z')).toBe('Prenez d’abord la photo du milieu.');
+  expect(c.clockIssue(field as any, m, 'lunch', later)).toBe('Type de pointage invalide.');
+  // No new attendance alert for a missing middle photo.
+  expect(c.attendance(m, '2026-11-14T15:00:00.000Z')).toBeNull();
 });

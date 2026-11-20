@@ -37,7 +37,7 @@ export class PhotosService {
     const form = await photoFormData(req);
     const file = photoFile(form.get('photo'));
     const key = uuid.parse(form.get('mission_id'));
-    const purpose = z.enum(['report', 'checkin', 'checkout']).parse(form.get('purpose') || 'report');
+    const purpose = z.enum(['report', 'checkin', 'midway', 'checkout']).parse(form.get('purpose') || 'report');
     const photo = uuid.parse(form.get('photo_id') || randomUUID());
     const m = await mission(db(), u, key);
 
@@ -82,6 +82,8 @@ export class PhotosService {
       ];
       if (purpose === 'checkin')
         writes.push(sql`UPDATE tf_missions SET status='ongoing',actual_start=${at},start_photo_id=${photo} WHERE id=${m.id}`);
+      if (purpose === 'midway')
+        writes.push(sql`UPDATE tf_missions SET midway_at=${at},midway_photo_id=${photo} WHERE id=${m.id} AND status='ongoing' AND midway_at IS NULL`);
       if (purpose === 'checkout')
         writes.push(sql`UPDATE tf_missions SET status='completed',actual_end=${at},end_photo_id=${photo} WHERE id=${m.id}`);
       await batchMission(u, m, purpose === 'report' ? 'photo.added' : 'clock.' + purpose, writes, {photo, purpose});

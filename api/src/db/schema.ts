@@ -117,6 +117,8 @@ export const tfMissions = pgTable('tf_missions', {
   lateGraceMinutes: integer('late_grace_minutes').notNull().default(15),
   startPhotoId: text('start_photo_id'),
   endPhotoId: text('end_photo_id'),
+  midwayAt: text('midway_at'),
+  midwayPhotoId: text('midway_photo_id'),
 }, (t) => ({
   statusCheck: check('tf_missions_status', sql`${t.status} IN ('planned','ongoing','completed','cancelled')`),
   reportStatusCheck: check('tf_missions_report_status', sql`${t.reportStatus} IN ('draft','submitted','approved','changes')`),

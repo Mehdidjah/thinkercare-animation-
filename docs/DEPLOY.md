@@ -210,7 +210,7 @@ Résultats attendus :
 
 - **Direction** : se connecter, puis ouvrir Comptes et Traçabilité.
 - **Gestionnaire** : programmer une animation.
-- **Animatrice** : pointer l’arrivée avec photo (vérifier que la photo s’affiche), enregistrer une vente, pointer le départ, soumettre le rapport.
+- **Animatrice** : pointer l’arrivée avec photo (vérifier que la photo s’affiche), enregistrer une vente, prendre la photo du milieu, pointer le départ, soumettre le rapport. La photo du milieu s’ouvre à mi-créneau : pour la recette, programmer un créneau déjà à moitié écoulé.
 - **Gestionnaire** : valider le rapport.
 - **Médecin** : ouvrir les réclamations.
 
