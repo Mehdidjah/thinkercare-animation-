@@ -11,8 +11,8 @@ function searchParams(req: Request): URLSearchParams {
 /**
  * GET/POST /api/terrain — exact HTTP contract from the original api.server.ts
  * (the `?action=` / `{action:…}` dispatch). Auth is resolved inline here (not
- * via a guard) to preserve per-action gating: `login` needs no session, and
- * `bootstrap` stays reachable during `force_change`.
+ * via a guard) to preserve per-action gating: `login` and `logout` need no
+ * session, and `bootstrap` stays reachable during `force_change`.
  */
 @Controller('api/terrain')
 export class TerrainController {
@@ -23,7 +23,7 @@ export class TerrainController {
 
   @Get()
   async get(@Req() req: Request, @Res() res: Response): Promise<void> {
-    const u = await this.auth.current(req);
+    const u = await this.auth.current(req, res);
     res.json(await this.terrain.getTerrain(u, searchParams(req)));
   }
 
@@ -47,11 +47,12 @@ export class TerrainController {
       res.json({ok: true, ...await this.terrain.getTerrain(login.user, new URLSearchParams())});
       return;
     }
-    const u = await this.auth.current(req);
+    // Before current(): an expired or revoked session must still be able to log out.
     if (b.action === 'logout') {
-      res.json(await this.auth.logout(req, res));
+      res.status(200).json(await this.auth.logout(req, res));
       return;
     }
+    const u = await this.auth.current(req, res);
     if (b.action === 'password') {
       res.json(await this.auth.changePassword(u, b, req));
       return;

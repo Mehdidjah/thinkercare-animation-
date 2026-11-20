@@ -8,6 +8,8 @@ import {createServer} from 'node:net';
 import {randomBytes, randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {AuthService, COOKIE} from '../src/auth/auth.service';
+import {AuthGuard} from '../src/auth/auth.guard';
+import {sha, hashNewPassword} from '../src/common/crypto';
 import {TerrainService} from '../src/terrain/terrain.service';
 import {TerrainController} from '../src/terrain/terrain.controller';
 import {OperationsService} from '../src/terrain/operations.service';
@@ -49,16 +51,23 @@ function request(token = ''): any {
     protocol: 'https', ip: '127.0.0.1', get: () => 'terrain.test', originalUrl: '/api/terrain'};
 }
 
+function response() {
+  const out = {data: undefined as any, status: undefined as number | undefined, cookies: [] as {name: string; value: string; options: any}[],
+    headers: {} as Record<string, string>, res: {} as any};
+  out.res = {
+    status: (code: number) => {out.status = code; return out.res;},
+    json: (value: any) => {out.data = value;},
+    cookie: (name: string, value: string, options: any) => {out.cookies.push({name, value, options});},
+    setHeader: (key: string, value: string) => {out.headers[key] = value;},
+  };
+  return out;
+}
+
 async function post(body: any, req = request()) {
-  let data: any;
-  let token = '';
-  const headers: Record<string, string> = {};
-  await controller.post({...req, body: JSON.stringify(body)}, {
-    json: (value: any) => {data = value;},
-    cookie: (_name: string, value: string) => {token = value;},
-    setHeader: (key: string, value: string) => {headers[key] = value;},
-  } as any);
-  return {data, token, headers};
+  const out = response();
+  await controller.post({...req, body: JSON.stringify(body)}, out.res);
+  const cookie = out.cookies.at(-1);
+  return {data: out.data, status: out.status, token: cookie?.value ?? '', cookie: cookie?.options, headers: out.headers};
 }
 
 async function login(username: keyof typeof initial, value = initial[username]) {
@@ -314,4 +323,143 @@ test('encrypted passwords reject tampering and ciphertext moved to another user'
   data[0] ^= 1;
   parts[3] = data.toString('base64url');
   expect(() => openPassword(fieldId, parts.join('.'))).toThrow();
+});
+
+const SESSION_MS = 28800000;
+const sessionExpires = async (req: any) =>
+  Number((await getPool().query('SELECT expires FROM tf_sessions WHERE token_hash=$1', [sha(req.cookies[COOKIE])])).rows[0]?.expires);
+const age = (req: any, expires: number) =>
+  getPool().query('UPDATE tf_sessions SET expires=$1 WHERE token_hash=$2', [expires, sha(req.cookies[COOKIE])]);
+const userRow = async (id: string) => (await getPool().query('SELECT * FROM tf_users WHERE id=$1', [id])).rows[0];
+const forwarded = (ip: string) => ({...request(), headers: {...request().headers, 'x-forwarded-for': `${ip}, 10.0.0.1`}});
+
+test('a session past half its lifetime is extended and its cookie re-sent; a younger one is left alone', async () => {
+  const field = await login('animatrice');
+  const issued = await sessionExpires(field);
+  const young = response();
+  await controller.get(field, young.res);
+  expect(young.data.user.id).toBe(fieldId);
+  expect(young.cookies).toEqual([]);
+  expect(await sessionExpires(field)).toBe(issued);
+
+  const guard = new AuthGuard(auth);
+  const context = (req: any, res: any) => ({switchToHttp: () => ({getRequest: () => req, getResponse: () => res})}) as any;
+  for (const via of ['get', 'guard', 'post'] as const) {
+    await age(field, Date.now() + SESSION_MS / 2 - 60000);
+    const before = Date.now();
+    const out = response();
+    if (via === 'get') await controller.get(field, out.res);
+    else if (via === 'guard') expect(await guard.canActivate(context(field, out.res))).toBe(true);
+    else await expect(controller.post({...field, body: JSON.stringify({action: 'password', current: 'incorrect', next: password()})}, out.res)).rejects.toMatchObject({status: 400});
+    expect(out.cookies).toEqual([{name: COOKIE, value: field.cookies[COOKIE],
+      options: {httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: SESSION_MS}}]);
+    expect(await sessionExpires(field)).toBeGreaterThanOrEqual(before + SESSION_MS);
+  }
+  expect(young.data.user).not.toHaveProperty('expires');
+  expect(await auth.current(field)).not.toHaveProperty('expires');
+
+  await age(field, Date.now() - 1000);
+  const late = response();
+  await expect(auth.current(field, late.res)).rejects.toMatchObject({status: 401});
+  expect(late.cookies).toEqual([]);
+  expect(await sessionExpires(field)).toBeLessThan(Date.now());
+});
+
+test('logout answers 200 and clears the cookie and cache with or without a valid session', async () => {
+  const expired = await login('animatrice');
+  await age(expired, Date.now() - 1000);
+  const revoked = request('f'.repeat(64));
+  for (const req of [request(), expired, revoked, {...request(), cookies: {}}]) {
+    const out = await post({action: 'logout'}, req);
+    expect(out.status).toBe(200);
+    expect(out.data).toEqual({ok: true});
+    expect(out.headers['Clear-Site-Data']).toBe('"cache"');
+    expect(out.token).toBe('');
+    expect(out.cookie).toMatchObject({httpOnly: true, secure: true, sameSite: 'strict', path: '/', maxAge: 0});
+  }
+  expect(await sessionExpires(expired)).toBeNaN();
+  const live = await login('animatrice');
+  const other = await login('animatrice');
+  await post({action: 'logout'}, live);
+  await expect(auth.current(live)).rejects.toMatchObject({status: 401});
+  expect((await auth.current(other)).id).toBe(fieldId);
+  await expect(post({action: 'logout'}, {...live, headers: {...live.headers, origin: 'https://elsewhere.test'}})).rejects.toMatchObject({status: 403});
+});
+
+test('failed logins are throttled per username whatever the forwarded IP; successes do not count', async () => {
+  const attempt = (username: string, value: string, i: number) => post({action: 'login', username, password: value}, forwarded(`198.51.100.${i}`));
+  for (let i = 0; i < 12; i++) await attempt('animatrice', initial.animatrice, i);
+  for (let i = 0; i < 9; i++) await expect(attempt('animatrice', 'incorrect', 20 + i)).rejects.toMatchObject({status: 401});
+  await attempt('animatrice', initial.animatrice, 40);
+  await expect(attempt('animatrice', 'incorrect', 41)).rejects.toMatchObject({status: 401});
+  await expect(attempt('animatrice', initial.animatrice, 42)).rejects.toMatchObject({status: 429});
+  await expect(attempt('ANIMATRICE', initial.animatrice, 43)).rejects.toMatchObject({status: 429});
+  await expect(post({action: 'login', username: 'animatrice', password: initial.animatrice})).rejects.toMatchObject({status: 429});
+  expect((await attempt('gestion', initial.gestion, 44)).data.user.username).toBe('gestion');
+  for (let i = 0; i < 10; i++) await expect(attempt('nobody', 'incorrect', 50 + i)).rejects.toMatchObject({status: 401});
+  await expect(attempt('nobody', 'incorrect', 60)).rejects.toMatchObject({status: 429});
+  expect((await getPool().query("SELECT * FROM tf_audit WHERE action='auth.login_failed'")).rowCount).toBe(10);
+}, 30000);
+
+test('a legacy hash still logs in and is upgraded to the current format, keeping the saved copy', async () => {
+  const before = await userRow(fieldId);
+  expect(before.password_hash).toMatch(/^[a-f0-9]{64}$/);
+  await login('animatrice');
+  const after = await userRow(fieldId);
+  expect(after.password_hash).toMatch(/^pbkdf2-sha256\$600000\$[a-f0-9]{64}$/);
+  expect(after.salt).not.toBe(before.salt);
+  expect(after.password_ciphertext).toBe(before.password_ciphertext);
+  await login('animatrice');
+  expect((await userRow(fieldId)).password_hash).toBe(after.password_hash);
+  await expect(login('animatrice', 'incorrect')).rejects.toMatchObject({status: 401});
+  const admin = await login('direction');
+  expect((await userRow(adminId)).password_hash).toMatch(/^pbkdf2-sha256\$600000\$/);
+  expect((await post({action: 'user-password', id: fieldId, adminPassword: initial.direction}, admin)).data.password).toBe(initial.animatrice);
+});
+
+test('logins and failed attempts on existing accounts are audited without credentials', async () => {
+  await login('animatrice');
+  await expect(login('animatrice', 'Wrong-secret-1')).rejects.toMatchObject({status: 401});
+  await expect(post({action: 'login', username: 'nobody', password: 'Wrong-secret-2'})).rejects.toMatchObject({status: 401});
+  await getPool().query('UPDATE tf_users SET active=0 WHERE id=$1', [fieldId]);
+  await expect(login('animatrice')).rejects.toMatchObject({status: 401});
+  const events = (await getPool().query('SELECT user_id,action,target,detail FROM tf_audit ORDER BY at')).rows;
+  expect(events).toEqual([
+    {user_id: fieldId, action: 'auth.login', target: fieldId, detail: {ip: '127.0.0.1'}},
+    {user_id: fieldId, action: 'auth.login_failed', target: fieldId, detail: {ip: '127.0.0.1'}},
+    {user_id: fieldId, action: 'auth.login_failed', target: fieldId, detail: {ip: '127.0.0.1'}},
+  ]);
+  for (const secret of [initial.animatrice, 'Wrong-secret-1', 'Wrong-secret-2']) expect(JSON.stringify(events)).not.toContain(secret);
+});
+
+test('password change and admin reveal accept both legacy and current hashes', async () => {
+  const admin = await login('direction');
+  const field = await login('animatrice');
+  const legacy = (id: string) => {
+    const row = baseline.find(r => r.id === id);
+    return getPool().query('UPDATE tf_users SET salt=$1,password_hash=$2 WHERE id=$3', [row.salt, row.password_hash, id]);
+  };
+  const reveal = (value: string) => post({action: 'user-password', id: fieldId, adminPassword: value}, admin);
+  const first = password(), second = password();
+
+  await expect(reveal('incorrect')).rejects.toMatchObject({status: 403});
+  expect((await reveal(initial.direction)).data.password).toBe(initial.animatrice);
+  await expect(post({action: 'password', current: 'incorrect', next: first}, field)).rejects.toMatchObject({status: 400});
+  await post({action: 'password', current: initial.animatrice, next: first}, field);
+  expect((await userRow(fieldId)).password_hash).toMatch(/^pbkdf2-sha256\$600000\$/);
+
+  await legacy(adminId);
+  await legacy(fieldId);
+  await expect(reveal('incorrect')).rejects.toMatchObject({status: 403});
+  expect((await reveal(initial.direction)).data.password).toBe(first);
+  await expect(post({action: 'password', current: 'incorrect', next: second}, field)).rejects.toMatchObject({status: 400});
+  await post({action: 'password', current: initial.animatrice, next: second}, field);
+  expect((await userRow(fieldId)).password_hash).toMatch(/^pbkdf2-sha256\$600000\$/);
+  await login('animatrice', second);
+  expect((await reveal(initial.direction)).data.password).toBe(second);
+
+  const {salt, hash} = await hashNewPassword(initial.direction);
+  await getPool().query('UPDATE tf_users SET salt=$1,password_hash=$2 WHERE id=$3', [salt, hash, adminId]);
+  await post({action: 'password', current: initial.direction, next: first}, admin);
+  expect((await auth.current(await login('direction', first))).role).toBe('admin');
 });
