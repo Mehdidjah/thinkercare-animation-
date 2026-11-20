@@ -41,6 +41,8 @@ const row = async (id: string) => (await pool().query('SELECT * FROM tf_missions
 const stored = () => (existsSync(join(storage, 'terrain')) ? readdirSync(join(storage, 'terrain')).length : 0);
 const kinds = async (id: string) =>
   Object.fromEntries((await pool().query('SELECT purpose,count(*)::int AS n FROM tf_photos WHERE mission_id=$1 GROUP BY purpose', [id])).rows.map((r) => [r.purpose, r.n]));
+const kindIds = async (id: string, purpose: string) =>
+  (await pool().query('SELECT id FROM tf_photos WHERE mission_id=$1 AND purpose=$2', [id, purpose])).rows.map((r) => r.id as string);
 const jpeg = (size = 4000) => {
   const data = new Uint8Array(size);
   data.set([255, 216, 255]);
@@ -254,18 +256,27 @@ test('the Stocks page lists the 8 latest présentoir photos of the pharmacy, onl
   const day = (n: number) => shiftDay(today, -n);
   const a1 = await addMission({field: ana.id, store, status: 'completed', day: day(1)});
   const b1 = await addMission({field: bea.id, store, status: 'completed', report: 'changes', day: day(2)});
+  // Ana's arrival, middle and departure photos at this pharmacy, through the real clock flow (before a2: one ongoing animation at a time).
+  const clocked = await addMission({field: ana.id, store, status: 'planned', start: ago(360), end: ago(-60), actualStart: null});
+  const clockPhotos: string[] = [];
+  for (const purpose of ['checkin', 'midway', 'checkout']) clockPhotos.push((await upload(ana, {mission_id: clocked, purpose})).id);
+  expect(await row(clocked)).toMatchObject({status: 'completed', start_photo_id: clockPhotos[0], midway_photo_id: clockPhotos[1], end_photo_id: clockPhotos[2]});
   const a2 = await addMission({field: ana.id, store});
   const cancelled = await addMission({field: ana.id, store, status: 'cancelled', day: day(3)});
   const away = await addMission({field: ana.id, store: elsewhere, status: 'completed', day: day(4)});
   expect(await gallery(manager, store)).toEqual([]);
+  expect(await gallery(ana, store)).toEqual([]);
 
-  const sent: {id: string; mission: string; field: User; day: string; caption: string}[] = [];
-  for (const [mission, who, d, n] of [[a1, ana, day(1), 3], [b1, bea, day(2), 4], [a2, ana, today, 3]] as const)
+  const sent: {id: string; mission: string; field: User; by: User; day: string; caption: string}[] = [];
+  // The last one is added by a manager on Ana's animation: it belongs to the animation, so Ana sees it under her name.
+  for (const [mission, who, by, d, n] of [[a1, ana, ana, day(1), 3], [b1, bea, bea, day(2), 4], [a2, ana, ana, today, 3], [a2, ana, manager, today, 1]] as const)
     for (let i = 0; i < n; i++) {
       const caption = `Présentoir ${sent.length}`;
-      const r = await upload(who, {mission_id: mission, purpose: 'presentoir', caption});
-      sent.push({id: r.id, mission, field: who, day: d, caption});
+      const r = await upload(by, {mission_id: mission, purpose: 'presentoir', caption});
+      sent.push({id: r.id, mission, field: who, by, day: d, caption});
     }
+  const byManager = sent[sent.length - 1];
+  expect((await pool().query('SELECT user_id FROM tf_photos WHERE id=$1', [byManager.id])).rows[0].user_id).toBe(manager.id);
   // Never listed: suivi and clock photos, another pharmacy, a cancelled mission (written directly, the API refuses it).
   await upload(ana, {mission_id: a1, caption: 'Rayon'});
   await upload(ana, {mission_id: away, purpose: 'presentoir'});
@@ -273,7 +284,11 @@ test('the Stocks page lists the 8 latest présentoir photos of the pharmacy, onl
     VALUES($1,$2,$3,$4,'','image/jpeg',1,$5,'presentoir')`, [randomUUID(), cancelled, ana.id, ago(-60), 'terrain/' + randomUUID()]);
   // Distinct times in upload order (the server stamps at the millisecond); the others are the newest.
   for (const [i, s] of sent.entries()) await pool().query('UPDATE tf_photos SET created_at=$2 WHERE id=$1', [s.id, ago(30 - i)]);
-  await pool().query(`UPDATE tf_photos SET created_at=$2 WHERE mission_id=ANY($1) AND purpose<>'presentoir' OR mission_id=$3`, [[a1, a2, b1], ago(-30), away]);
+  await pool().query(`UPDATE tf_photos SET created_at=$2 WHERE mission_id=ANY($1) AND purpose<>'presentoir' OR mission_id=$3`, [[a1, a2, b1, clocked], ago(-30), away]);
+  // So the 8 newest photos of the pharmacy's live animations are not all présentoir photos: the clock ones lead.
+  const latest = await pool().query(`SELECT ph.id,ph.purpose FROM tf_photos ph JOIN tf_missions m ON m.id=ph.mission_id
+    WHERE m.store_id=$1 AND m.status<>'cancelled' ORDER BY ph.created_at DESC LIMIT 8`, [store]);
+  expect(latest.rows.filter((p) => p.purpose !== 'presentoir').map((p) => p.id).sort()).toEqual([...clockPhotos, ...(await kindIds(a1, 'report'))].sort());
 
   const shape = async (list: typeof sent) =>
     Promise.all(list.map(async (s) => ({id: s.id, created_at: (await pool().query('SELECT created_at FROM tf_photos WHERE id=$1', [s.id])).rows[0].created_at,
@@ -282,10 +297,15 @@ test('the Stocks page lists the 8 latest présentoir photos of the pharmacy, onl
   expect(await gallery(manager, store)).toEqual(await shape(newest.slice(0, 8)));
   expect(await gallery(ana, store)).toEqual(await shape(newest.filter((s) => s.field.id === ana.id)));
   expect(await gallery(bea, store)).toEqual(await shape(newest.filter((s) => s.field.id === bea.id)));
+  for (const u of [manager, ana]) expect((await gallery(u, store)).filter((p: any) => clockPhotos.includes(p.id))).toEqual([]);
+  expect((await gallery(ana, store)).find((p: any) => p.id === byManager.id)).toMatchObject({field_name: ana.label, mission_id: a2});
+  expect((await gallery(bea, store)).map((p: any) => p.id)).not.toContain(byManager.id);
 
   // Every listed photo opens for its reader; an animatrice never gets a colleague's photo.
   for (const u of [manager, ana, bea]) for (const p of await gallery(u, store)) expect(await readPhoto(u, p.id)).toBe(304);
+  expect(await readPhoto(ana, byManager.id)).toBe(304);
   for (const s of sent.filter((x) => x.field.id === bea.id)) expect(await failure(readPhoto(ana, s.id))).toEqual(FORBIDDEN);
+  expect(await failure(readPhoto(bea, byManager.id))).toEqual(FORBIDDEN);
   // Unchanged access to the page itself.
   expect(await failure(terrain.getTerrain(field, q('action=stocks&store=' + store)))).toEqual({status: 403, body: {error: 'Point de vente non accessible.'}});
   expect(await failure(terrain.getTerrain(doctor, q('action=stocks&store=' + store)))).toEqual({status: 403, body: {error: 'Accès non autorisé.'}});
