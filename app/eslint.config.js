@@ -27,7 +27,7 @@ export default tseslint.config(
             {
               name: "server-only",
               message:
-                "TanStack Start does not use the Next.js `server-only` package. Rename the module to `*.server.ts` or mark it with `@tanstack/react-start/server-only`.",
+                "This is a client-only SPA: server code belongs in the NestJS API (api/), not in app/.",
             },
           ],
         },

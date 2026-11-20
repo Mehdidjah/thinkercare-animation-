@@ -107,10 +107,12 @@ Arrêter la base : `pg_ctl -D ~/.terrain-dev/pg stop`.
 ## Vérifications et tests
 
 ```sh
-cd app && bun run --bun tsc --noEmit && bun test            # tests du cache de requêtes et des photos
+cd app && bun run --bun tsc --noEmit && bun test ./tests    # client HTTP, cache de requêtes, photos, règles métier
 cd api && bun run --bun tsc --noEmit -p tsconfig.json && bun test   # Postgres jetable, voir api/test/README.md
 cd app && bun run --bun vite build                          # build de production
 ```
+
+La CI GitHub (`.github/workflows/ci.yml`) lance les mêmes commandes, plus `docker build`, sur chaque pull request et chaque push sur `main`.
 
 `bun run lint` (ESLint + Prettier) signale encore de nombreux écarts de formatage dans le code existant : ce n’est pas un critère bloquant. Ne pas reformater les fichiers en masse.
 

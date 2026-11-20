@@ -53,6 +53,7 @@ export class AuthService {
       await run(db(), sql`UPDATE tf_sessions SET expires=${now + SESSION_MS} WHERE token_hash=${tokenHash}`);
       this.setCookie(res, t, SESSION_MS);
     }
+    (req as Request & {user?: User}).user = u; // read by the exception filter's log line
     return u;
   }
 

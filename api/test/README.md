@@ -4,10 +4,23 @@ Run every suite from `api/`:
 
 ```sh
 bun test                    # all suites in test/
-bun run test:passwords      # password workflow only
+bun run test:passwords      # password workflow, sessions and login throttle
+bun run test:auth           # the above plus password hashing (auth-crypto, no database)
+bun run test:data           # data integrity, attendance, migrations and seed
+bun run test:platform       # HTTP server: headers, caching, photos, upload limiter, /healthz
 bun run test:uploads        # photo body limits only (no database)
 bun run --bun tsc --noEmit -p tsconfig.json   # typecheck
 ```
+
+Suites:
+
+- `passwords.test.ts`: password changes, resets and reveals, sliding session renewal, logout without a valid session (`Clear-Site-Data`), the per-IP and per-username login throttle, legacy hash upgrade at login, login audit rows.
+- `auth-crypto.test.ts`: hash formats and known-answer vectors (no database).
+- `data.test.ts`: unknown motives, account usernames, strict dates, bootstrap caps and `prefetch`, `missing_end` alerts, `close-mission`, unique-violation messages, error logging, seed (manager edits kept, `SEED_DEMO_DATA`), void-sale price restore, set-based stock writes, reports limit, audit window, and migration `0002` on a fresh and on an existing database.
+- `platform.test.ts`: boots the real `src/main.ts` in a subprocess and checks security headers and the CSP, static `Cache-Control`, photo caching (`ETag`, `304`), the upload limiter, the check-in pre-check, `/healthz` and JSON 404s.
+- `photo-body.test.ts`: multipart size limits (no database).
+
+`bun test` runs every file in one process. The shared pool in `src/db/client.ts` is replaced when a previous suite has ended it, so database suites can follow each other in any order.
 
 Requirements:
 

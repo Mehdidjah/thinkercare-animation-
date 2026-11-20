@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bun test",
     "test:passwords": "bun test test/passwords.test.ts",
+    "test:auth": "bun test test/auth-crypto.test.ts test/passwords.test.ts",
+    "test:data": "bun test test/data.test.ts",
     "test:uploads": "bun test test/photo-body.test.ts",
     "test:platform": "bun test test/platform.test.ts"
   },

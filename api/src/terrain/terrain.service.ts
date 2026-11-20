@@ -3,7 +3,7 @@ import {z} from 'zod';
 import {db} from '../db/client';
 import {type Exec, first, all, run, serializable, sql} from '../db/tx';
 import {fail} from '../common/errors';
-import {passwordHashAsync, randomSalt} from '../common/crypto';
+import {hashNewPassword} from '../common/crypto';
 import {sealPassword} from '../common/password-vault';
 import {id, uuid, brand, text, date, qty} from '../common/validation';
 import {mission, sales, counts, parseMission, range, auditSql, batchMission, changes} from './helpers';
@@ -279,8 +279,7 @@ export class TerrainService {
       if (!old && !v.password) fail('Mot de passe initial requis.');
       const sealed = v.password ? sealPassword(v.id, v.password) : null;
       // Hash off the event loop, before the transaction opens.
-      const salt = randomSalt();
-      const hash = v.password ? await passwordHashAsync(v.password, salt) : null;
+      const {salt, hash} = v.password ? await hashNewPassword(v.password) : {salt: null, hash: null};
       await serializable(async (tx) => {
         if (!old) {
           await run(

@@ -59,11 +59,11 @@ async function fieldUser(): Promise<User> {
   return account(username);
 }
 
-async function addMission(o: {field: string; day: string; status?: string; start?: string; end?: string; actualStart?: string | null; actualEnd?: string | null}) {
+async function addMission(o: {field: string; day: string; status?: string; start?: string; end?: string; actualStart?: string | null; actualEnd?: string | null; store?: string}) {
   const id = randomUUID();
   await pool().query(`INSERT INTO tf_missions(id,store_id,field_id,day,start_at,end_at,brands,status,actual_start,actual_end,created_by,updated_at)
     VALUES($1,$2,$3,$4,$5,$6,'["TOUCHE","BELNCO"]',$7,$8,$9,$10,$11)`,
-  [id, storeId, o.field, o.day, at(o.day, o.start || '08:00'), at(o.day, o.end || '10:00'), o.status || 'planned', o.actualStart ?? null, o.actualEnd ?? null, admin.id, new Date().toISOString()]);
+  [id, o.store || storeId, o.field, o.day, at(o.day, o.start || '08:00'), at(o.day, o.end || '10:00'), o.status || 'planned', o.actualStart ?? null, o.actualEnd ?? null, admin.id, new Date().toISOString()]);
   return id;
 }
 
@@ -281,7 +281,10 @@ test('unexpected errors and database conflicts are logged without request bodies
 
 test('the boot seed keeps manager edits to catalogue products and only adds demo stores on request', async () => {
   const catalogue = JSON.parse(readFileSync(join(root, 'src/db/catalogue.json'), 'utf8'));
-  const [missing, taken] = catalogue.slice(-2);
+  // Products no other test has counted or priced yet (their rows reference tf_products).
+  const used = new Set((await pool().query(`SELECT product_id FROM tf_counts UNION SELECT product_id FROM tf_store_prices UNION SELECT product_id FROM tf_complaints
+    UNION SELECT product_id FROM tf_cases UNION SELECT product_id FROM tf_field_notes`)).rows.map((r) => r.product_id));
+  const [missing, taken] = catalogue.filter((p: any) => p.id !== 'antiacne' && !used.has(p.id)).slice(-2);
   const edit = {action: 'product', id: 'antiacne', brand: 'TOUCHE', sku: 'antiacne-v2', name: 'Anti Acné (renommé)', unit: 'pack', price_hint: 192345, active: false};
   await terrain.postTerrain(manager, edit);
   await pool().query("UPDATE tf_products SET image_url='stale' WHERE id='antiacne'");
@@ -302,7 +305,10 @@ test('the boot seed keeps manager edits to catalogue products and only adds demo
 
 test('voiding a sale restores the remembered store price it had set', async () => {
   const worker = await fieldUser();
-  const id = await addMission({field: worker.id, day: today, status: 'ongoing', actualStart: at(today, '08:00')});
+  // Own store: sales recorded by other tests at the shared store would count as "the last valid sale".
+  const store = randomUUID();
+  await pool().query(`INSERT INTO tf_stores(id,name,kind,city,address) VALUES($1,'Pharmacie des prix','pharmacy','Alger','2 rue des tests')`, [store]);
+  const id = await addMission({field: worker.id, day: today, status: 'ongoing', actualStart: at(today, '08:00'), store});
   const [p, other] = (await pool().query("SELECT id FROM tf_products WHERE brand='TOUCHE' AND active=1 AND id<>'antiacne' ORDER BY id LIMIT 2")).rows.map((r) => r.id);
   const sale = async (lines: {product_id: string; qty: number; unit_price: number}[]) => {
     const ticket = randomUUID();
@@ -310,7 +316,7 @@ test('voiding a sale restores the remembered store price it had set', async () =
     await pause(3);
     return ticket;
   };
-  const price = async (product: string) => (await pool().query('SELECT unit_price FROM tf_store_prices WHERE store_id=$1 AND product_id=$2', [storeId, product])).rows[0]?.unit_price;
+  const price = async (product: string) => (await pool().query('SELECT unit_price FROM tf_store_prices WHERE store_id=$1 AND product_id=$2', [store, product])).rows[0]?.unit_price;
   const voidSale = (ticket: string) => terrain.postTerrain(manager, {action: 'void-sale', id: ticket, reason: 'Erreur de saisie'});
 
   const good = await sale([{product_id: p, qty: 1, unit_price: 180000}]);

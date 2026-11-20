@@ -15,7 +15,8 @@ import {
 /**
  * ThinkerCare Terrain schema, ported from the D1 SQLite migrations
  * (0002_terrain, 0003_restore_owner_access, 0004_terrain_workflow,
- * 0005_service_primes_terrain) to Postgres via Drizzle pg-core.
+ * 0005_service_primes_terrain; git history: 710d9ea:app/migrations/) to
+ * Postgres via Drizzle pg-core.
  *
  * Type rules (design §9.2):
  *  - boolean-ish 0/1 flags (active, force_change, no_sales, consent, clinical,

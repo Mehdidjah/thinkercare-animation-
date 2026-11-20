@@ -105,7 +105,7 @@ Aucun raccordement Shopify, caisse, ERP, transporteur ou Dermoscan n’est activ
 Ne jamais joindre à un dossier partagé les sessions, les mots de passe initiaux, les sels et hachages des comptes, ni la clé `ACCOUNT_PASSWORD_KEY`. Pour une nouvelle installation, partir d’un export nettoyé, de nouvelles clés et d’un premier administrateur propre.
 
 ## Limites et recette
-Référentiels : 2 000 produits/points de vente, 1 000 personnes/appareils ; animations : 2 000 dans une sélection ; rapports : 20 000 lignes ; réclamations : 1 000 dans une période ; audit : 300 derniers événements. Les dépassements de rapports et historiques sont signalés, les totaux incomplets ne sont pas présentés comme complets.
+Référentiels : 2 000 produits/points de vente, 1 000 personnes/appareils ; animations : 2 000 dans une sélection ; rapports : 20 000 lignes ; réclamations : 1 000 dans une période ; audit : 30 derniers jours, 5 000 événements au plus (connexions comprises). Les dépassements de rapports et historiques sont signalés, les totaux incomplets ne sont pas présentés comme complets.
 
 Tester avec deux animatrices, une gestionnaire et un médecin :
 

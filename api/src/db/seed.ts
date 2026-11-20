@@ -2,7 +2,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {sql} from 'drizzle-orm';
 import {db, getPool} from './client';
-import {passwordHashAsync, randomSalt} from '../common/crypto';
+import {hashNewPassword} from '../common/crypto';
 import {sealPassword} from '../common/password-vault';
 
 /**
@@ -35,8 +35,7 @@ async function seedUser(
   forceChange: number,
 ): Promise<void> {
   if ((await db().execute(sql`SELECT 1 FROM tf_users WHERE id=${id} OR username=${username}`)).rows.length) return;
-  const salt = randomSalt();
-  const hash = await passwordHashAsync(password, salt);
+  const {salt, hash} = await hashNewPassword(password);
   const sealed = role === 'admin' ? null : sealPassword(id, password);
   await db().execute(sql`INSERT INTO tf_users(id,username,label,role,active,salt,password_hash,password_ciphertext,force_change,created_at)
         VALUES(${id},${username},${label},${role},1,${salt},${hash},${sealed},${forceChange},${new Date().toISOString()})

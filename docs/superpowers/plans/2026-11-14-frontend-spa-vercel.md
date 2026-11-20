@@ -1,5 +1,7 @@
 # Frontend → static Vite SPA on Vercel — Implementation Plan
 
+> **Historical plan (superseded).** `VITE_API_URL` was later removed: the SPA only calls `/api/...` on its own origin (Vercel rewrites `/api/*` to Railway, `bun run dev` proxies it to `localhost:3000`). Current setup: [`app/README.md`](../../../app/README.md) and [`docs/DEPLOY.md`](../../DEPLOY.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the existing Terrain UI (currently a TanStack Start + Cloudflare Workers SSR app) into a standalone **static Vite React SPA** that builds clean and deploys to **Vercel**, with its API calls pointed at a configurable backend base URL (the Railway NestJS API, built later).

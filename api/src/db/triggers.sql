@@ -1,6 +1,6 @@
--- ThinkerCare Terrain integrity triggers, ported from the SQLite originals in
--- app/migrations/0002_terrain.sql, 0004_terrain_workflow.sql and
--- 0005_service_primes_terrain.sql to PL/pgSQL. Applied by dist/db/migrate.js
+-- ThinkerCare Terrain integrity triggers, ported from the SQLite originals
+-- 0002_terrain.sql, 0004_terrain_workflow.sql and 0005_service_primes_terrain.sql
+-- (git history: 710d9ea:app/migrations/) to PL/pgSQL. Applied by dist/db/migrate.js
 -- AFTER the Drizzle schema migrations. Idempotent (CREATE OR REPLACE + drop/recreate).
 --
 -- Semantics preserved exactly:

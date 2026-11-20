@@ -9,7 +9,7 @@ import {randomBytes, randomUUID} from 'node:crypto';
 import {Readable} from 'node:stream';
 import {AuthService, COOKIE} from '../src/auth/auth.service';
 import {AuthGuard} from '../src/auth/auth.guard';
-import {sha, hashNewPassword} from '../src/common/crypto';
+import {sha, hashNewPassword, passwordHashAsync} from '../src/common/crypto';
 import {TerrainService} from '../src/terrain/terrain.service';
 import {TerrainController} from '../src/terrain/terrain.controller';
 import {OperationsService} from '../src/terrain/operations.service';
@@ -89,9 +89,16 @@ beforeAll(async () => {
     DATABASE_SSL: 'false', PGSSLMODE: 'disable', ACCOUNT_PASSWORD_KEY: randomBytes(32).toString('hex'),
     STORAGE_DIR: join(directory, 'photos'), S3_BUCKET: '', S3_ACCESS_KEY_ID: '', S3_SECRET_ACCESS_KEY: '',
     ADMIN_INITIAL_PASSWORD: initial.direction, SEED_MANAGER_PASSWORD: initial.gestion,
-    SEED_FIELD_PASSWORD: initial.animatrice, SEED_DOCTOR_PASSWORD: initial.medecin});
+    SEED_FIELD_PASSWORD: initial.animatrice, SEED_DOCTOR_PASSWORD: initial.medecin, SEED_DEMO_DATA: '1'});
   command(process.execPath, ['src/db/migrate.ts']);
   seed();
+  const seeded = (await getPool().query('SELECT id,username,salt,password_hash FROM tf_users')).rows;
+  for (const row of seeded) expect(row.password_hash).toMatch(/^pbkdf2-sha256\$600000\$[a-f0-9]{64}$/);
+  // Production accounts predate the current format: the suite starts from legacy hashes.
+  for (const row of seeded) {
+    await getPool().query('UPDATE tf_users SET password_hash=$1 WHERE id=$2',
+      [await passwordHashAsync(initial[row.username as keyof typeof initial], row.salt), row.id]);
+  }
   baseline = (await getPool().query('SELECT * FROM tf_users')).rows;
 }, 60000);
 
@@ -164,6 +171,7 @@ test('admin reset replaces the saved password, revokes sessions and survives sta
   const admin = await login('direction');
   const temporary = password();
   await post(update(temporary), admin);
+  expect((await userRow(fieldId)).password_hash).toMatch(/^pbkdf2-sha256\$600000\$[a-f0-9]{64}$/);
   await expect(auth.current(field)).rejects.toMatchObject({status: 401});
   seed();
   const resetLogin = await login('animatrice', temporary);
@@ -183,6 +191,7 @@ test('short passwords work for account creation, admin resets and personal chang
   const admin = await login('direction');
   const id = randomUUID();
   await post({action:'user', id, username:'short-password-test', label:'Compte de test', role:'field', active:true, password:'a'}, admin);
+  expect((await userRow(id)).password_hash).toMatch(/^pbkdf2-sha256\$600000\$[a-f0-9]{64}$/);
   const created = await post({action:'login', username:'short-password-test', password:'a'});
   expect(created.data.user.id).toBe(id);
   await post(update('b'), admin);

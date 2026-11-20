@@ -43,9 +43,10 @@ Service « app » sur Railway (`Variables`). Le modèle commenté est `api/.env.
 | `STORAGE_DIR` | oui (ou S3) | `/data`, le point de montage du volume. Les fichiers sont rangés sous `/data/terrain/<uuid>` (photos d’animation) et `/data/terrain-notes/<uuid>` (photos des retours terrain). |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_REGION` | non | Stockage S3 compatible (R2, S3, MinIO), à la place du volume. Il n’est actif que si les trois premières variables sont présentes, et il passe alors avant `STORAGE_DIR`. Non utilisé en production. **Sans aucun stockage, les photos répondent 503 et aucun pointage n’est possible, car l’arrivée exige une photo.** |
 | `SEED_MANAGER_PASSWORD`, `SEED_FIELD_PASSWORD`, `SEED_DOCTOR_PASSWORD` | non | Comptes de test `gestion`, `animatrice` et `medecin`. Chacun n’est créé que si sa variable est définie et qu’il n’existe pas encore. Un compte existant n’est jamais réinitialisé. En production, les laisser vides et créer les comptes réels depuis l’application. |
-| `SEED_DEMO_DATA` | non | `1` crée les deux points de vente de démonstration « Pharmacie Centrale (démo) » et « Parapharmacie du Parc (démo) ». Les lignes existantes ne sont jamais modifiées ni supprimées. En production, elles existent déjà : les désactiver dans l’application si elles gênent. |
+| `SEED_DEMO_DATA` | non | `1` crée les deux points de vente de démonstration « Pharmacie Centrale (démo) » et « Parapharmacie du Parc (démo) ». Les lignes existantes ne sont jamais modifiées ni supprimées. **Laisser vide sur Railway.** En production, elles existent déjà : les désactiver dans l’application si elles gênent. |
 | `NODE_ENV` | — | `production`, fixé par le `Dockerfile`. |
 | `PORT` | — | Injecté par Railway (3000 par défaut). |
+| `PG_STATEMENT_TIMEOUT_MS` | non | Durée maximale d’une requête SQL de l’application, en millisecondes (30000 par défaut, `0` désactive). La migration au démarrage s’exécute toujours sans limite. |
 | `PG_POOL_MAX`, `STATIC_DIR`, `DATABASE_SSL`, `PGSSLMODE=disable` | non | Réglages avancés : taille du pool (10 par défaut), dossier du build Vite et TLS Postgres. |
 
 Ne jamais committer de valeur réelle : `.env` et `.env.*` sont ignorés par Git, sauf les `.env.example`.
@@ -67,7 +68,7 @@ Ensuite, Railway lance la `startCommand` de `railway.json`, identique au `CMD` d
    - ajout des produits du catalogue de référence (`api/src/db/catalogue.json`, 86 références) absents de la base ;
    - création des points de vente de démonstration si `SEED_DEMO_DATA=1`.
 
-   Le seed ne modifie ni les comptes existants ni les produits déjà en base. Les modifications faites par les gestionnaires (prix indicatif, activation, nom, SKU, unité) survivent donc aux déploiements. Pour corriger un produit, passer par l’application, pas par `catalogue.json`. Une erreur du seed est journalisée sans bloquer le démarrage.
+   Le seed ne modifie jamais les comptes existants. Sur les produits déjà en base, il ne rafraîchit que les colonnes issues de l’import (image, URL et identifiant source, vrac, date du catalogue). Les modifications faites par les gestionnaires (prix indicatif, activation, nom, SKU, unité) survivent donc aux déploiements. Pour corriger un produit, passer par l’application, pas par `catalogue.json`. Une erreur du seed est journalisée sans bloquer le démarrage.
 3. **`node dist/main.js`** écoute sur `$PORT` et sert `/api/*`, `/healthz`, `/robots.txt` et la SPA.
 
 **Changer le schéma** :
@@ -222,4 +223,6 @@ Résultats attendus :
 | `503 Stockage photo indisponible.` au pointage | `STORAGE_DIR` absent ou volume non monté sur `/data`. |
 | `503` à la création ou à la réinitialisation d’un compte | `ACCOUNT_PASSWORD_KEY` absente ou invalide. |
 | Retour à l’écran de connexion | Session expirée ou révoquée : toute réponse `401` de `/api` ramène à la connexion. |
-| Le service redémarre en boucle | Voir les journaux (Railway → Deployments → Logs, préfixes `[migrate]`, `[seed]`, `[main]`). Le plus souvent : `DATABASE_URL` invalide ou base injoignable. |
+| Le service redémarre en boucle | Voir les journaux (Railway → Deployments → Logs, préfixes `[config]`, `[migrate]`, `[seed]`, `[main]`). Le plus souvent : `DATABASE_URL` invalide ou base injoignable. |
+| « L’opération n’a pas abouti » côté utilisateur | Chercher `[http] 500` dans les journaux : méthode, chemin, action, compte et pile d’appel (jamais le corps de la requête). Les incidents de stockage sont préfixés `[storage]`, les transactions abandonnées après plusieurs conflits `[tx]`. |
+| `503 Trop d’envois de photos en cours.` | Plus de 4 envois simultanés et 8 en attente. L’application propose de réessayer avec la même photo, sans doublon. |

@@ -97,7 +97,8 @@ async function bootstrap() {
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.method !== 'GET' || isApi(req.originalUrl) || !existsSync(indexHtml)) return next();
     res.setHeader('Cache-Control', 'no-cache');
-    res.sendFile(indexHtml);
+    // Relative to root: without it, send() refuses any absolute path containing a dot-directory.
+    res.sendFile('index.html', {root: staticDir});
   });
 
   const port = Number(process.env.PORT) || 3000;
