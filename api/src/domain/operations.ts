@@ -10,6 +10,8 @@ export const REASONS:Record<string,{label:string;category:string}>={
  tolerance:{label:'Réaction ou problème de tolérance',category:'tolerance'},other:{label:'Autre — préciser',category:'commercial'}
 };
 export const REQUEST_REASONS:Record<string,{label:string;category:string}>={
+ habillage:{label:'Habillage',category:'commercial'},presentoir:{label:'Présentoir',category:'commercial'},stockout:{label:'Rupture de stock',category:'commercial'},
+ expiry_date:{label:'Date d’expiration',category:'commercial'},animation:{label:'Animation',category:'commercial'},
  new_animation:{label:'Organiser une nouvelle animation',category:'commercial'},dermoscan:{label:'Demander un Dermoscan',category:'commercial'},
  restock:{label:'Réassort ou commande',category:'commercial'},material:{label:'Présentoir, testeurs ou supports',category:'commercial'},
  training:{label:'Formation de l’équipe pharmacie',category:'commercial'},followup:{label:'Rappel ou visite commerciale',category:'commercial'},
