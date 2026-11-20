@@ -14,10 +14,10 @@ bun run --bun tsc --noEmit -p tsconfig.json   # typecheck
 
 Suites:
 
-- `passwords.test.ts`: password changes, resets and reveals, sliding session renewal, logout without a valid session (`Clear-Site-Data`), the per-IP and per-username login throttle, legacy hash upgrade at login, login audit rows.
+- `passwords.test.ts`: password changes, resets and reveals, sliding session renewal, logout without a valid session (`Clear-Site-Data`), the per-IP and per-username login throttle and the signed known-browser cookie that keeps the real user out of a lockout caused elsewhere, legacy hash upgrade at login, login audit rows.
 - `auth-crypto.test.ts`: hash formats and known-answer vectors (no database).
-- `data.test.ts`: unknown motives, account usernames, strict dates, bootstrap caps and `prefetch`, `missing_end` alerts, `close-mission`, unique-violation messages, error logging, seed (manager edits kept, `SEED_DEMO_DATA`), void-sale price restore, set-based stock writes, reports limit, audit window, and migration `0002` on a fresh and on an existing database.
-- `platform.test.ts`: boots the real `src/main.ts` in a subprocess and checks security headers and the CSP, static `Cache-Control`, photo caching (`ETag`, `304`), the upload limiter, the check-in pre-check, `/healthz` and JSON 404s.
+- `data.test.ts`: unknown motives, account usernames, strict dates, bootstrap caps and `prefetch` (week, bonus strip, attendance alerts), `missing_end` alerts, `close-mission`, the visits listed when an animatrice is deactivated, unique-violation messages, error logging, an idle connection closed by Postgres (logged, not fatal), seed (manager edits kept, `SEED_DEMO_DATA`), void-sale price restore or removal, set-based stock writes, reports limit, audit window, migration `0002` on a fresh and on an existing database, and the boot trigger script taking no table lock.
+- `platform.test.ts`: boots the real `src/main.ts` in a subprocess and checks security headers and the CSP, static `Cache-Control`, JSON compression, the `PUBLIC_APP_URL` redirect, photo caching (`ETag`, `304`) and grid thumbnails, the upload limiter (global and per account) and the cut of stalled or trickling bodies, the check-in pre-check, `/healthz` and JSON 404s.
 - `photo-body.test.ts`: multipart size limits (no database).
 
 `bun test` runs every file in one process. The shared pool in `src/db/client.ts` is replaced when a previous suite has ended it, so database suites can follow each other in any order.

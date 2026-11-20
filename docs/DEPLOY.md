@@ -23,7 +23,7 @@ Les deux déploiements partent automatiquement de la branche `main`.
 
 Le navigateur ne parle qu’au domaine Vercel : l’API est donc servie à la même origine que la page. C’est ce qui permet le cookie de session `__Host-terrain-session` (HttpOnly, Secure, SameSite=Strict), y compris sur iPhone. `VITE_API_URL` n’est plus prise en charge : l’application appelle toujours `/api/...` en relatif. Ne pas la définir sur Vercel.
 
-L’URL Railway sert aussi une copie complète de l’application (le build Vite est embarqué dans l’image). Elle fonctionne, mais elle est plus lente depuis l’Europe : ne pas la diffuser.
+L’URL Railway sert aussi une copie complète de l’application (le build Vite est embarqué dans l’image). Elle fonctionne, mais elle est plus lente depuis l’Europe : ne pas la diffuser. Avec `PUBLIC_APP_URL=https://thinkercare-animation.vercel.app`, une page ouverte sur l’URL Railway est redirigée (308) vers Vercel ; `/api`, `/healthz` et les fichiers statiques restent servis tels quels.
 
 **Deux réglages à garder alignés.** Tout changement de domaine (domaine personnalisé sur Vercel, renommage du service Railway) doit mettre à jour les deux :
 
@@ -38,14 +38,15 @@ Service « app » sur Railway (`Variables`). Le modèle commenté est `api/.env.
 | --- | --- | --- |
 | `DATABASE_URL` | oui | Référence `${{Postgres.DATABASE_URL}}` (réseau privé, sans TLS). Une URL publique passe en TLS sans vérification de chaîne ; `DATABASE_SSL=true/false` force le choix. |
 | `ADMIN_INITIAL_PASSWORD` | oui | Lue à chaque démarrage par le seed, uniquement pour créer le compte `direction` s’il n’existe pas. La modifier ensuite ne change pas le mot de passe existant. Si elle manque, le seed échoue : sur une base neuve, le compte `direction` n’est pas créé et le catalogue peut ne pas être chargé. |
-| `ACCOUNT_PASSWORD_KEY` | oui | 32 octets aléatoires en 64 caractères hexadécimaux (`openssl rand -hex 32`). Elle chiffre la copie des mots de passe non-admin que la direction peut afficher. **La sauvegarder à part**, hors des sauvegardes de la base, par exemple dans le gestionnaire de mots de passe de la direction. **Ne jamais la changer sans rechiffrer les copies existantes** : aucun outil de rechiffrement n’existe aujourd’hui. Si elle manque ou est invalide, la création et la réinitialisation des comptes non-admin et leurs changements de mot de passe répondent 503 ; la connexion fonctionne toujours. Voir [`api/test/README.md`](../api/test/README.md). |
+| `ACCOUNT_PASSWORD_KEY` | oui | 32 octets aléatoires en 64 caractères hexadécimaux (`openssl rand -hex 32`). Elle chiffre la copie des mots de passe non-admin que la direction peut afficher. **La sauvegarder à part**, hors des sauvegardes de la base, par exemple dans le gestionnaire de mots de passe de la direction. **Ne jamais la changer sans rechiffrer les copies existantes** : aucun outil de rechiffrement n’existe aujourd’hui. Elle signe aussi le cookie `__Host-terrain-device` posé à la connexion : un navigateur déjà utilisé par un compte garde sa propre limite de tentatives, si bien que des essais lancés ailleurs ne bloquent pas l’utilisateur sur son téléphone habituel. Si elle manque ou est invalide, la création et la réinitialisation des comptes non-admin et leurs changements de mot de passe répondent 503 ; la connexion fonctionne toujours, sans cette exemption. Voir [`api/test/README.md`](../api/test/README.md). |
 | `APP_ORIGIN` | oui avec Vercel | Origines autorisées pour les POST, séparées par des virgules, au format exact `https://hôte` sans `/` final. Exemple : `https://thinkercare-animation.vercel.app,https://<alias>.vercel.app`. L’origine du service lui-même est toujours acceptée. |
-| `STORAGE_DIR` | oui (ou S3) | `/data`, le point de montage du volume. Les fichiers sont rangés sous `/data/terrain/<uuid>` (photos d’animation) et `/data/terrain-notes/<uuid>` (photos des retours terrain). |
+| `STORAGE_DIR` | oui (ou S3) | `/data`, le point de montage du volume. Les fichiers sont rangés sous `/data/terrain/<uuid>` (photos d’animation) et `/data/terrain-notes/<uuid>` (photos des retours terrain), avec `<uuid>.thumb` pour la miniature des grilles (photos envoyées depuis novembre 2026). |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT`, `S3_REGION` | non | Stockage S3 compatible (R2, S3, MinIO), à la place du volume. Il n’est actif que si les trois premières variables sont présentes, et il passe alors avant `STORAGE_DIR`. Non utilisé en production. **Sans aucun stockage, les photos répondent 503 et aucun pointage n’est possible, car l’arrivée exige une photo.** |
 | `SEED_MANAGER_PASSWORD`, `SEED_FIELD_PASSWORD`, `SEED_DOCTOR_PASSWORD` | non | Comptes de test `gestion`, `animatrice` et `medecin`. Chacun n’est créé que si sa variable est définie et qu’il n’existe pas encore. Un compte existant n’est jamais réinitialisé. En production, les laisser vides et créer les comptes réels depuis l’application. |
 | `SEED_DEMO_DATA` | non | `1` crée les deux points de vente de démonstration « Pharmacie Centrale (démo) » et « Parapharmacie du Parc (démo) ». Les lignes existantes ne sont jamais modifiées ni supprimées. **Laisser vide sur Railway.** En production, elles existent déjà : les désactiver dans l’application si elles gênent. |
 | `NODE_ENV` | — | `production`, fixé par le `Dockerfile`. |
 | `PORT` | — | Injecté par Railway (3000 par défaut). |
+| `PUBLIC_APP_URL` | non, recommandée | Origine publique de l’application, par exemple `https://thinkercare-animation.vercel.app` (https, sans `/` final). Les pages demandées à l’URL Railway y sont redirigées. Vide : pas de redirection. |
 | `PG_STATEMENT_TIMEOUT_MS` | non | Durée maximale d’une requête SQL de l’application, en millisecondes (30000 par défaut, `0` désactive). La migration au démarrage s’exécute toujours sans limite. |
 | `PG_POOL_MAX`, `STATIC_DIR`, `DATABASE_SSL`, `PGSSLMODE=disable` | non | Réglages avancés : taille du pool (10 par défaut), dossier du build Vite et TLS Postgres. |
 
@@ -61,7 +62,7 @@ Railway construit le `Dockerfile` en trois étapes :
 
 Ensuite, Railway lance la `startCommand` de `railway.json`, identique au `CMD` du Dockerfile :
 
-1. **`node dist/db/migrate.js`** applique les migrations Drizzle de `api/drizzle/` (journal dans le schéma Postgres `drizzle`), puis rejoue `api/src/db/triggers.sql`, qui est idempotent. En cas d’échec, le conteneur s’arrête et Railway le relance selon la politique de redémarrage de `railway.json`.
+1. **`node dist/db/migrate.js`** attend la base jusqu’à une minute (Postgres qui redémarre en même temps), applique les migrations Drizzle de `api/drizzle/` (journal dans le schéma Postgres `drizzle`), puis rejoue `api/src/db/triggers.sql`. Ce fichier est idempotent et ne crée que les triggers manquants : un démarrage sans changement ne verrouille aucune table. En cas d’échec, le conteneur s’arrête et Railway le relance selon la politique de redémarrage de `railway.json`.
 2. **`node dist/db/seed.js`** réalise, dans l’ordre :
    - création du compte `direction` s’il manque ;
    - création des comptes de test si les variables `SEED_*_PASSWORD` sont définies ;
@@ -77,7 +78,7 @@ Ensuite, Railway lance la `startCommand` de `railway.json`, identique au `CMD` d
 2. lancer `bun run db:generate` dans `api/` pour produire le fichier SQL et les métadonnées dans `api/drizzle/` ;
 3. committer ; la migration est appliquée au déploiement suivant.
 
-Ne jamais modifier une migration déjà appliquée. Les règles d’intégrité (triggers) vivent dans `api/src/db/triggers.sql`, rejoué à chaque démarrage : il doit rester idempotent.
+Ne jamais modifier une migration déjà appliquée. Les règles d’intégrité (triggers) vivent dans `api/src/db/triggers.sql`, rejoué à chaque démarrage : il doit rester idempotent. Le corps d’une fonction se modifie directement (`CREATE OR REPLACE FUNCTION`) ; pour changer les événements d’un trigger existant, ajouter un `DROP TRIGGER` explicite avant son bloc de création.
 
 ## 4. Healthcheck et interruption au déploiement
 
@@ -185,7 +186,8 @@ Résultats attendus :
 | `/assets/*.js`, `/assets/*.css` (noms hachés par Vite) | `Cache-Control: public, max-age=31536000, immutable` |
 | Autres fichiers de `/assets` (favicon, images de `app/public/assets`) | `Cache-Control: public, max-age=86400` |
 | `/api/terrain` sans cookie | `401`, `Cache-Control: no-store`, corps JSON `{"error":"…"}` |
-| Photos (`/api/photos?id=…`, `/api/field-photos?…`, avec session) | `Cache-Control: private, max-age=31536000, immutable`, `ETag`, `Content-Length` ; `304` si `If-None-Match` correspond |
+| Réponses JSON de l’API de plus de 1 Ko (avec session) | `Content-Encoding: br` ou `gzip` selon `Accept-Encoding`, `Vary: Accept-Encoding` |
+| Photos (`/api/photos?id=…`, `/api/field-photos?…`, avec session ; `&size=thumb` pour la miniature) | `Cache-Control: private, no-cache`, `ETag`, `Content-Length` ; `304` si `If-None-Match` correspond. Le navigateur revalide à chaque affichage : sans session, la photo n’est plus montrée, même déjà vue sur l’appareil. |
 
 **Connexion de bout en bout.** Le mot de passe est saisi sans écho, donc absent de l’historique du shell. S’il contient `"` ou `\`, tester dans le navigateur.
 
@@ -202,7 +204,7 @@ rm -f /tmp/terrain.jar; unset PW
 
 Résultats attendus :
 
-- **Connexion** : statut `2xx`, avec `Set-Cookie: __Host-terrain-session=…; Path=/; HttpOnly; Secure; SameSite=Strict`. Un `403 Origine non autorisée.` signale qu’`APP_ORIGIN` ne contient pas le domaine.
+- **Connexion** : statut `2xx`, avec `Set-Cookie: __Host-terrain-session=…; Path=/; HttpOnly; Secure; SameSite=Strict` (et `__Host-terrain-device`, valable un an). Un `403 Origine non autorisée.` signale qu’`APP_ORIGIN` ne contient pas le domaine.
 - **Bootstrap** : `200`.
 - **Déconnexion** : `200 {"ok":true}`, cookie vidé et `Clear-Site-Data: "cache"`. La déconnexion répond toujours ainsi, même sans session valide.
 
@@ -222,7 +224,9 @@ Résultats attendus :
 | L’interface s’affiche mais tous les appels `/api` sont en 404/502 | `destination` de `app/vercel.json` différente de l’URL Railway. |
 | `503 Stockage photo indisponible.` au pointage | `STORAGE_DIR` absent ou volume non monté sur `/data`. |
 | `503` à la création ou à la réinitialisation d’un compte | `ACCOUNT_PASSWORD_KEY` absente ou invalide. |
-| Retour à l’écran de connexion | Session expirée ou révoquée : toute réponse `401` de `/api` ramène à la connexion. |
+| Retour à l’écran de connexion | Session expirée ou révoquée : toute réponse `401` de `/api` ramène à la connexion. Une déconnexion dans un onglet déconnecte aussi les autres onglets. |
+| `429 Trop de tentatives.` pour un utilisateur légitime | Plus de 10 échecs en 15 minutes sur cet identifiant depuis des navigateurs inconnus (ou plus de 20 tentatives depuis la même adresse). Le navigateur habituel de l’utilisateur garde sa propre limite et peut se connecter ; sinon attendre la fin du quart d’heure. |
 | Le service redémarre en boucle | Voir les journaux (Railway → Deployments → Logs, préfixes `[config]`, `[migrate]`, `[seed]`, `[main]`). Le plus souvent : `DATABASE_URL` invalide ou base injoignable. |
 | « L’opération n’a pas abouti » côté utilisateur | Chercher `[http] 500` dans les journaux : méthode, chemin, action, compte et pile d’appel (jamais le corps de la requête). Les incidents de stockage sont préfixés `[storage]`, les transactions abandonnées après plusieurs conflits `[tx]`. |
-| `503 Trop d’envois de photos en cours.` | Plus de 4 envois simultanés et 8 en attente. L’application propose de réessayer avec la même photo, sans doublon. |
+| `503 Trop d’envois de photos en cours.` | Plus de 4 envois simultanés et 8 en attente, ou déjà 2 envois en cours pour ce compte. L’application propose de réessayer avec la même photo, sans doublon. Un envoi dont le corps n’avance plus pendant 20 s, ou n’est pas arrivé en 60 s, est coupé pour libérer sa place ; une connexion coupée par le téléphone n’apparaît pas en `[http] 500`. |
+| `[db] idle connection lost` dans les journaux | Postgres a fermé une connexion inutilisée (redémarrage, maintenance). Sans conséquence : la requête suivante en ouvre une nouvelle. |

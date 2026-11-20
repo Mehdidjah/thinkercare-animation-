@@ -43,10 +43,10 @@ L’administrateur valide l’identité et le rôle professionnel avant de crée
   - les arrivées non pointées et les arrivées tardives des huit derniers jours ;
   - les départs non pointés (« Départ non pointé »), c’est-à-dire les animations encore en cours après l’heure de fin prévue plus la tolérance, quelle que soit leur ancienneté.
 
-  Les animatrices désactivées sont ignorées. Une alerte peut être marquée comme vue sans effacer le retard. Exemple : prévu 08:00, arrivée 12:00, retard affiché de 4 h. Les alertes s’affichent dans l’application ouverte, sans SMS, WhatsApp, courriel ni notification système en arrière-plan.
+  Les animatrices désactivées sont ignorées. À la désactivation, la direction voit la liste de ses animations encore programmées ou en cours, à réaffecter, annuler ou clôturer ; dans le planning, elles portent la mention « compte désactivé ». Une alerte peut être marquée comme vue sans effacer le retard. Exemple : prévu 08:00, arrivée 12:00, retard affiché de 4 h. Les alertes s’affichent dans l’application ouverte, sans SMS, WhatsApp, courriel ni notification système en arrière-plan.
 - Statut de l’animation : programmée, en cours, terminée, annulée. Une animation déjà commencée n’est pas effacée par une annulation administrative : pointer la fin et préciser l’incident au rapport.
 - **Actualisation** : automatique toutes les 20 secondes quand l’écran est visible. Ce n’est pas une connexion instantanée par WebSocket. L’heure d’actualisation et les erreurs restent visibles.
-- **Session** : elle reste ouverte tant que l’application est utilisée. Si elle expire ou est révoquée, l’application revient à l’écran de connexion.
+- **Session** : elle reste ouverte tant que l’application est utilisée. Si elle expire ou est révoquée, l’application demande de se reconnecter ; les écrans se rechargent ensuite. Se déconnecter dans un onglet déconnecte aussi les autres onglets.
 - Internet nécessaire. Pas de pointage hors ligne ni de géolocalisation. Une photo aide au contrôle mais ne certifie pas la présence : selon le téléphone, le sélecteur peut proposer une image déjà enregistrée. Aucune reconnaissance faciale. L’API ne prend pas d’horodatage client arbitraire.
 
 ## Stocks
@@ -61,7 +61,7 @@ La vue pharmacie affiche le dernier stock final compté par référence avec la 
 ## Ventes et rapports
 - Ticket = une vente comprenant plusieurs lignes. Chaque ligne contient une quantité et un prix réellement pratiqué.
 - Catalogue visuel et recherche par nom, marque, teinte ; lots professionnels masqués par défaut. Ajouter les produits, ajuster les quantités et enregistrer. Le formulaire reste ouvert pour la vente suivante.
-- Calcul côté serveur, montants en centimes de DZD. Le dernier prix saisi pour cette pharmacie est proposé, sinon le prix indicatif du catalogue ; il reste modifiable. Un prix absent doit être renseigné, jamais transformé en vente gratuite.
+- Calcul côté serveur, montants en centimes de DZD. Le dernier prix saisi pour cette pharmacie est proposé, sinon le prix indicatif du catalogue ; il reste modifiable. Annuler une vente rend le prix de la dernière vente valide restante, ou le prix catalogue s’il n’en reste aucune : une faute de frappe annulée n’est plus proposée. Un prix absent doit être renseigné, jamais transformé en vente gratuite.
 - Un pack compte comme une unité commerciale vendue ; le rapport ne transforme pas implicitement les composants en pièces.
 - UUID de ticket pour retries, aucune insertion dupliquée. Les conflits de modifications sont rejetés et demandent une actualisation.
 - Annuler une saisie erronée : responsable seulement, motif obligatoire, historique conservé ; pas de gestion des remboursements clients ou des encaissements.
@@ -72,9 +72,9 @@ La vue pharmacie affiche le dernier stock final compté par référence avec la 
 ## Photos et réclamations
 - **Contenu autorisé** : photos de produits, de rayons et d’installations seulement. Pas de personnes, de pièces d’identité, de prescriptions ni de résultats Dermoscan.
 - **Traitement** : le navigateur convertit l’image en JPEG redimensionné, sans les métadonnées EXIF d’origine. Le serveur vérifie le format réel et accepte 20 Mo au maximum.
-- **Stockage** : privé sur le serveur (volume Railway), sans lien public. Chaque photo n’est servie qu’après contrôle des droits.
+- **Stockage** : privé sur le serveur (volume Railway), sans lien public. Chaque photo n’est servie qu’après contrôle des droits, vérifié à chaque affichage même pour une photo déjà vue sur l’appareil. Les grilles affichent une miniature envoyée avec la photo ; la photo entière s’ouvre au clic.
 - **Nombre** : photos d’arrivée et de départ, plus jusqu’à 15 photos de suivi par animation.
-- **Échec d’envoi** : un nouvel essai réutilise le même identifiant de photo, donc il ne crée pas de doublon. Si trop d’envois sont en cours, le serveur demande de réessayer quelques secondes plus tard.
+- **Échec d’envoi** : un nouvel essai réutilise le même identifiant de photo, donc il ne crée pas de doublon. Si trop d’envois sont en cours (ou déjà deux pour ce compte), le serveur demande de réessayer quelques secondes plus tard. Un envoi bloqué par le réseau est interrompu après 20 secondes sans progression (60 secondes au total) : réessayer avec la même photo.
 - **Rétention** : la suppression automatique n’est pas implémentée. Prévoir une procédure administrateur avant une utilisation à grande échelle.
 - Réclamation : qualité, commercial ou tolérance ; produit, lot, code anonyme et faits. Accord explicite demandé pour la transmission anonymisée d’un signalement de tolérance.
 - Les notes privées ne sont visibles qu’aux comptes médecins. Le retour opérationnel doit rester sans détail médical. Les médecins voient les dossiers du service, pas uniquement ceux déjà attribués.

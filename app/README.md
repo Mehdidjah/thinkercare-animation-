@@ -55,7 +55,7 @@ for f in core operations response-checks; do diff -q api/src/domain/$f.ts app/sr
 - **`/api/terrain`**
   - `GET ?action=…` lit les données ; sans action, il renvoie le bootstrap.
   - `POST {action: …}` écrit les données. Il exige `Content-Type: application/json` et un en-tête `Origin` autorisé (l’origine du service ou une origine listée dans `APP_ORIGIN`).
-- **Photos** : `/api/photos` et `/api/field-photos` reçoivent du multipart. Le navigateur compresse les photos en JPEG ; le serveur vérifie le type réel et accepte 20 Mo au maximum.
+- **Photos** : `/api/photos` et `/api/field-photos` reçoivent du multipart. Le navigateur compresse les photos en JPEG et joint une miniature (`thumb`) que les grilles affichent via `&size=thumb` ; le serveur vérifie le type réel et accepte 20 Mo au maximum. Les photos sont servies en `private, no-cache` avec `ETag` : chaque affichage est revalidé (304) après contrôle de la session.
 - **Erreurs** : toujours du JSON `{"error": "message en français"}` avec le statut HTTP.
   - Un `401` signifie « plus de session valide » : l’application revient à l’écran de connexion.
   - Un `409` signale un conflit de modification : actualiser puis réessayer.
