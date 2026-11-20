@@ -14,21 +14,39 @@ Le cahier des charges est le texte de la gestionnaire transmis par le propriéta
 L’administrateur valide l’identité et le rôle professionnel avant de créer les comptes. Un rôle n’est pas changé sur un compte existant : désactiver puis créer un compte distinct. Les permissions sont appliquées côté serveur, y compris pour les photos. Les pouvoirs techniques d’administration de l’hébergement restent distincts des permissions applicatives.
 
 ## Démarrage
-1. Se connecter à `direction` avec le mot de passe initial transmis séparément. Le remplacer immédiatement.
+1. Se connecter à `direction` avec le mot de passe initial transmis séparément (variable Railway `ADMIN_INITIAL_PASSWORD`). Le remplacer immédiatement.
 2. Créer un compte nominatif pour la gestionnaire, chaque animatrice et chaque médecin.
-3. Ajouter les pharmacies / cosmétiques / grossistes et adresses réelles.
+3. Ajouter les pharmacies, parapharmacies, grossistes et leurs adresses réelles. Désactiver les points de vente « (démo) » s’ils existent.
 4. Ajouter les identifiants des appareils Dermoscan.
-5. Vérifier les 86 références importées des sites officiels le 14 novembre 2026 : 66 TOUCHÉ et 20 BELNCO, teintes et lots professionnels distincts. La vente affiche par défaut 53 références hors lots professionnels. Ajouter les références NOOM vérifiées si nécessaire. Les prix catalogue sont des repères modifiables, pas des prix de pharmacie certifiés.
+5. Vérifier les 86 références importées des sites officiels le 14 novembre 2026 : 66 TOUCHÉ et 20 BELNCO, avec teintes et lots professionnels distincts.
+   - La vente affiche par défaut 53 références, hors lots professionnels.
+   - Ajouter les références NOOM vérifiées si nécessaire.
+   - Les prix catalogue sont des repères modifiables, pas des prix de pharmacie certifiés. Les modifications faites dans l’application sont conservées lors des déploiements.
 6. Programmer une animation, puis la tester avec une animatrice assignée et des données non personnelles.
 
 ## Planning et pointage
 - Semaine affichée du lundi au dimanche ; heure de référence Africa/Algiers.
 - Une animatrice par animation, une ou plusieurs marques. Pour un travail en équipe, programmer une animation par personne sans doubler les ventes attribuées ; un modèle de mission collective n’est pas implémenté.
-- Le lieu d’installation est obligatoire si un Dermoscan est sélectionné. Les collisions d’horaires de l’animatrice et de l’appareil sont bloquées en base, même avec deux gestionnaires simultanés.
-- Début : le jour prévu, par l’animatrice assignée, avec une photo du lieu. Fin : après un début enregistré, avec une nouvelle photo. Photo et horaire sont enregistrés ensemble ; un envoi échoué ne valide pas le pointage. L’heure réelle est celle du serveur. La gestionnaire ne pointe pas à sa place.
-- Tolérance de retard réglable par animation (0 à 120 minutes, 15 par défaut). La direction et la gestionnaire voient les arrivées non pointées et les arrivées tardives des huit derniers jours. L’alerte peut être marquée comme vue sans effacer le retard. Prévu 08:00, arrivée 12:00 : retard affiché de 4 h. Alertes dans l’application ouverte, sans SMS, WhatsApp, courriel ou notification système en arrière-plan.
+- Le lieu d’installation est obligatoire si un Dermoscan est sélectionné.
+- Les chevauchements d’horaires sont autorisés, pour une même animatrice comme pour un même appareil. Vérifier le planning avant d’enregistrer.
+- **Début** : le jour prévu, par l’animatrice assignée, avec une photo du lieu.
+  - Une animatrice ne peut pas commencer une animation tant qu’une autre est encore en cours. Le message indique laquelle (pharmacie, date) : pointer d’abord son départ.
+- **Fin** : après un début enregistré, avec une nouvelle photo.
+- Photo et horaire sont enregistrés ensemble : un envoi échoué ne valide pas le pointage. L’heure réelle est celle du serveur.
+- **Rôle de la gestionnaire** : elle ne pointe pas l’arrivée à la place de l’animatrice. Depuis la fiche de l’animation, elle peut en revanche :
+  - « Clôturer le départ » d’une animation restée en cours ;
+  - « Corriger l’heure de départ » d’une animation terminée.
+
+  L’heure doit être postérieure à l’arrivée et pas dans le futur. Le motif est obligatoire et l’opération est tracée.
+- **Tolérance de retard** : réglable par animation, de 0 à 120 minutes (15 par défaut).
+- **Alertes de présence** : la direction et la gestionnaire voient :
+  - les arrivées non pointées et les arrivées tardives des huit derniers jours ;
+  - les départs non pointés (« Départ non pointé »), c’est-à-dire les animations encore en cours après l’heure de fin prévue plus la tolérance, quelle que soit leur ancienneté.
+
+  Les animatrices désactivées sont ignorées. Une alerte peut être marquée comme vue sans effacer le retard. Exemple : prévu 08:00, arrivée 12:00, retard affiché de 4 h. Les alertes s’affichent dans l’application ouverte, sans SMS, WhatsApp, courriel ni notification système en arrière-plan.
 - Statut de l’animation : programmée, en cours, terminée, annulée. Une animation déjà commencée n’est pas effacée par une annulation administrative : pointer la fin et préciser l’incident au rapport.
-- Actualisation automatique toutes les 20 secondes quand l’écran est visible ; ce n’est pas une connexion instantanée par WebSocket. L’heure d’actualisation et les erreurs restent visibles.
+- **Actualisation** : automatique toutes les 20 secondes quand l’écran est visible. Ce n’est pas une connexion instantanée par WebSocket. L’heure d’actualisation et les erreurs restent visibles.
+- **Session** : elle reste ouverte tant que l’application est utilisée. Si elle expire ou est révoquée, l’application revient à l’écran de connexion.
 - Internet nécessaire. Pas de pointage hors ligne ni de géolocalisation. Une photo aide au contrôle mais ne certifie pas la présence : selon le téléphone, le sélecteur peut proposer une image déjà enregistrée. Aucune reconnaissance faciale. L’API ne prend pas d’horodatage client arbitraire.
 
 ## Stocks
@@ -52,29 +70,56 @@ La vue pharmacie affiche le dernier stock final compté par référence avec la 
 - Rapports par date de l’animation, personne, pharmacie, marque et produit. Quantités / montants déclarés, jamais chiffres encaissés ni marge.
 
 ## Photos et réclamations
-- Photos de produits/rayons/installations seulement. Pas de personnes, pièces d’identité, prescriptions ni résultats Dermoscan. Le client convertit l’image en JPEG redimensionné, sans métadonnées EXIF d’origine ; le serveur valide le format binaire, taille maximale 20 Mo, accès privé R2.
-- Photos d’arrivée et de départ, plus jusqu’à 15 photos de suivi par animation. Aucun lien de bucket public. La suppression/rétention automatique n’est pas encore implémentée : prévoir une procédure administrateur avant utilisation à grande échelle.
+- **Contenu autorisé** : photos de produits, de rayons et d’installations seulement. Pas de personnes, de pièces d’identité, de prescriptions ni de résultats Dermoscan.
+- **Traitement** : le navigateur convertit l’image en JPEG redimensionné, sans les métadonnées EXIF d’origine. Le serveur vérifie le format réel et accepte 20 Mo au maximum.
+- **Stockage** : privé sur le serveur (volume Railway), sans lien public. Chaque photo n’est servie qu’après contrôle des droits.
+- **Nombre** : photos d’arrivée et de départ, plus jusqu’à 15 photos de suivi par animation.
+- **Échec d’envoi** : un nouvel essai réutilise le même identifiant de photo, donc il ne crée pas de doublon. Si trop d’envois sont en cours, le serveur demande de réessayer quelques secondes plus tard.
+- **Rétention** : la suppression automatique n’est pas implémentée. Prévoir une procédure administrateur avant une utilisation à grande échelle.
 - Réclamation : qualité, commercial ou tolérance ; produit, lot, code anonyme et faits. Accord explicite demandé pour la transmission anonymisée d’un signalement de tolérance.
 - Les notes privées ne sont visibles qu’aux comptes médecins. Le retour opérationnel doit rester sans détail médical. Les médecins voient les dossiers du service, pas uniquement ceux déjà attribués.
 - Aucun diagnostic automatique, score Dermoscan, messagerie patient ni système d’urgence. Ne pas utiliser ce formulaire à la place d’une prise en charge urgente.
 - Avant de saisir des informations réelles, faire valider par votre responsable compétent le cadre de confidentialité, les habilitations, l’information des personnes, l’hébergement et la durée de conservation. Cette version ne revendique pas une conformité réglementaire certifiée.
 
 ## Architecture et exploitation
-React / TanStack Start, un Worker Cloudflare, D1 pour les données, R2 privé pour les photos.
-- `src/terrain/App.tsx` : interfaces par rôle.
-- `src/terrain/QuickTools.tsx` : catalogue, vente rapide, stock groupé, pointage photo et alertes.
-- `src/terrain/core.ts` : calculs et règles pures.
-- `src/terrain/api.server.ts` : authentification, autorisations, validation et transactions.
-- `src/routes/api/terrain.ts`, `photos.ts` : points d’entrée authentifiés.
-- `migrations/0002_terrain.sql` : schéma et données d’initialisation ; `0004_terrain_workflow.sql` : catalogue et parcours simplifié, sans suppression de données opérationnelles.
-- `tests/terrain.mjs`, `tests/schema.py` : règles et contraintes.
+
+- **Front** : SPA React/Vite (`app/`), hébergée sur Vercel, qui renvoie `/api/*` vers l’API.
+- **API** : NestJS + PostgreSQL (`api/`) sur Railway.
+- **Photos** : volume Railway privé monté sur `/data`.
+
+Les permissions sont vérifiées par l’API à chaque requête. Les fichiers utiles :
+
+- `app/src/terrain/ui/App.tsx` : interfaces par rôle.
+- `app/src/terrain/ui/QuickTools.tsx` : catalogue, vente rapide, stock groupé, pointage photo et alertes.
+- `app/src/terrain/domain/core.ts`, copie identique de `api/src/domain/core.ts` : calculs et règles pures.
+- `api/src/auth/` : session, connexion, mots de passe, contrôle d’origine.
+- `api/src/terrain/terrain.service.ts` et `operations.service.ts` : autorisations, validation et transactions de `/api/terrain`.
+- `api/src/terrain/photos.service.ts` : envoi et lecture des photos.
+- `api/src/db/schema.ts`, `api/drizzle/`, `api/src/db/triggers.sql` : schéma, migrations et règles d’intégrité.
+- `api/src/db/seed.ts` et `catalogue.json` : compte `direction` et catalogue de référence, ajoutés sans écraser l’existant.
+
+Le développement local et les tests sont décrits dans `app/README.md`. Les variables, le volume, les sauvegardes et les contrôles de production sont décrits dans `docs/DEPLOY.md`.
+
 Aucun raccordement Shopify, caisse, ERP, transporteur ou Dermoscan n’est activé. Aucune commission issue de Touché Conseil n’est reprise.
-Ne jamais exporter les sessions, mots de passe initiaux, sels/hachages des comptes avec un dossier public. Avant auto-hébergement, créer un export nettoyé, de nouvelles clés et un premier administrateur propre.
+
+Ne jamais joindre à un dossier partagé les sessions, les mots de passe initiaux, les sels et hachages des comptes, ni la clé `ACCOUNT_PASSWORD_KEY`. Pour une nouvelle installation, partir d’un export nettoyé, de nouvelles clés et d’un premier administrateur propre.
 
 ## Limites et recette
 Référentiels : 2 000 produits/points de vente, 1 000 personnes/appareils ; animations : 2 000 dans une sélection ; rapports : 20 000 lignes ; réclamations : 1 000 dans une période ; audit : 300 derniers événements. Les dépassements de rapports et historiques sont signalés, les totaux incomplets ne sont pas présentés comme complets.
-Tester avec deux animatrices, une gestionnaire et un médecin : création planning, collisions, pointages, relevé zéro et non zéro, ventes/prix, annulation de saisie, photo, compte rendu, corrections, visibilité des réclamations et sessions révoquées.
-Les essais locaux de cette livraison utilisent uniquement des données fictives en mémoire et des écrans isolés. La recette authentifiée complète sur le site hébergé reste à effectuer, notamment l’upload R2 et l’accès des comptes via la passerelle de la plateforme.
+
+Tester avec deux animatrices, une gestionnaire et un médecin :
+
+- création du planning et chevauchements ;
+- pointages, avec un départ oublié puis clôturé par la gestionnaire ;
+- relevés à zéro et non nuls ;
+- ventes et prix ;
+- annulation de saisie ;
+- photos ;
+- compte rendu et corrections ;
+- visibilité des réclamations ;
+- sessions révoquées.
+
+Les tests automatiques de l’API tournent sur une base PostgreSQL jetable (`api/test/README.md`). Après chaque déploiement, faire les contrôles de `docs/DEPLOY.md` (§ 8) avec des données non personnelles.
 
 
 ## Réclamations, demandes et retours terrain — 14 novembre 2026
