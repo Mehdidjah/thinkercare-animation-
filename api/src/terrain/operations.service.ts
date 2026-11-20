@@ -7,7 +7,7 @@ import {randomUUID} from '../common/crypto';
 import {uuid, id, text, optionalDate} from '../common/validation';
 import {auditSql, period, noteBy} from './helpers';
 import {manages, canMission, type User} from '../domain/core';
-import {reasonFor, canReadCase, safeCase} from '../domain/operations';
+import {MAX_REASONS, reasonFor, reasonCategory, canReadCase, safeCase} from '../domain/operations';
 
 const txt = text;
 const contextSchema = {mission_id: uuid.nullable(), store_id: id.nullable(), store_label: txt(160)};
@@ -26,7 +26,7 @@ export class OperationsService {
       if (u.role === 'doctor') conds.push(sql`c.kind='complaint'`);
       const rows = await all(
         db(),
-        sql`SELECT c.id,c.kind,c.reason,c.category,c.channel,c.status,c.priority,c.code,c.created_at,c.updated_at,c.due_day,c.author_id,c.assignee_id,c.product_id,c.store_id,COALESCE(s.name,NULLIF(c.store_label,''),'Sans pharmacie') AS store_name,p.name AS product_name,f.label AS author_name,a.label AS assignee_name
+        sql`SELECT c.id,c.kind,c.reason,c.reasons,c.category,c.channel,c.status,c.priority,c.code,c.created_at,c.updated_at,c.due_day,c.author_id,c.assignee_id,c.product_id,c.store_id,COALESCE(s.name,NULLIF(c.store_label,''),'Sans pharmacie') AS store_name,p.name AS product_name,f.label AS author_name,a.label AS assignee_name
             FROM tf_cases c LEFT JOIN tf_stores s ON s.id=c.store_id LEFT JOIN tf_products p ON p.id=c.product_id JOIN tf_users f ON f.id=c.author_id LEFT JOIN tf_users a ON a.id=c.assignee_id
             WHERE ${sql.join(conds, sql` AND `)} ORDER BY c.updated_at DESC LIMIT 1001`,
       );
@@ -166,7 +166,9 @@ export class OperationsService {
           id: uuid,
           ...contextSchema,
           kind: z.enum(['complaint', 'request']),
-          reason: txt(40),
+          reasons: z.array(txt(40)).optional(),
+          // An app opened before multiple reasons sends a single one.
+          reason: txt(40).optional(),
           channel: z.enum(['onsite', 'phone', 'whatsapp', 'email', 'other']),
           product_id: id.nullable(),
           lot: txt(80),
@@ -179,10 +181,12 @@ export class OperationsService {
         .strict()
         .parse(b);
       if (u.role === 'doctor' && v.kind !== 'complaint') fail('Les demandes commerciales sont réservées à l’équipe terrain.', 403);
+      const keys = v.reasons ?? (v.reason === undefined ? [] : [v.reason]);
       // Own keys only: an inherited name such as "toString" is not a reason.
-      const reason = reasonFor(v.kind, v.reason);
-      if (!reason) fail('Sélectionnez un motif valide.');
-      if (reason.category === 'tolerance' && !v.consent) fail('La transmission anonymisée au médecin doit être acceptée.');
+      if (!keys.length || keys.length > MAX_REASONS || new Set(keys).size < keys.length || !keys.every((k) => reasonFor(v.kind, k)))
+        fail('Sélectionnez entre 1 et 3 motifs valides.');
+      const category = reasonCategory(v.kind, keys);
+      if (category === 'tolerance' && !v.consent) fail('La transmission anonymisée au médecin doit être acceptée.');
       return serializable(async (tx) => {
         const old = await first<any>(tx, sql`SELECT author_id FROM tf_cases WHERE id=${v.id}`);
         if (old) {
@@ -195,14 +199,14 @@ export class OperationsService {
         const now = new Date().toISOString();
         await run(
           tx,
-          sql`INSERT INTO tf_cases(id,mission_id,store_id,store_label,author_id,product_id,kind,reason,category,channel,lot,code,priority,description,consent,due_day,created_at,updated_at)
-              VALUES(${v.id},${v.mission_id},${store},${v.store_label},${u.id},${v.product_id},${v.kind},${v.reason},${reason.category},${v.channel},${v.lot},${v.code},${v.priority},${v.description},${+v.consent},${v.due_day},${now},${now})`,
+          sql`INSERT INTO tf_cases(id,mission_id,store_id,store_label,author_id,product_id,kind,reason,reasons,category,channel,lot,code,priority,description,consent,due_day,created_at,updated_at)
+              VALUES(${v.id},${v.mission_id},${store},${v.store_label},${u.id},${v.product_id},${v.kind},${keys[0]},${keys.join(',')},${category},${v.channel},${v.lot},${v.code},${v.priority},${v.description},${+v.consent},${v.due_day},${now},${now})`,
         );
         await run(
           tx,
           sql`INSERT INTO tf_case_events(id,case_id,user_id,at,status) VALUES(${randomUUID()},${v.id},${u.id},${now},'new')`,
         );
-        await run(tx, auditSql(u, 'service.created', v.id, {kind: v.kind, reason: v.reason}));
+        await run(tx, auditSql(u, 'service.created', v.id, {kind: v.kind, reasons: keys}));
         return {ok: true, id: v.id};
       });
     }

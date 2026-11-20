@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useId,useState} from 'react';
 
 import {Dialog} from './QuickTools';
 
@@ -6,7 +6,7 @@ import {request} from './client';
 
 import {CASE_STATUS,BRANDS,dayInAlger,manages} from '../domain/core';
 
-import {REASONS,REQUEST_REASONS,CHANNELS,CASE_KINDS,reasonLabel} from '../domain/operations';
+import {REASONS,REQUEST_REASONS,CHANNELS,CASE_KINDS,MAX_REASONS,reasonCategory,reasonLabel} from '../domain/operations';
 
 import {useRemote,Dates,Warning,formValues,localDate} from './OperationsUI';
 
@@ -16,10 +16,10 @@ const uid=()=>crypto.randomUUID();
 
 export function ServiceForm({data,missionId=null,storeId='',initialKind='complaint',close,done}:{data:any;missionId?:string|null;storeId?:string;initialKind?:string;close:()=>void;done:()=>void}){
 
-const [key]=useState(uid),[kind,setKind]=useState(initialKind),[reason,setReason]=useState(''),[store,setStore]=useState(storeId),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+const [key]=useState(uid),[kind,setKind]=useState(initialKind),[picked,setPicked]=useState<string[]>([]),[store,setStore]=useState(storeId),[busy,setBusy]=useState(false),[err,setErr]=useState(''),hint=useId();
 
 
-const reasons=kind==='request'?REQUEST_REASONS:REASONS,clinical=reasons[reason]?.category==='tolerance';
+const reasons=kind==='request'?REQUEST_REASONS:REASONS,clinical=reasonCategory(kind,picked)==='tolerance',full=picked.length>=MAX_REASONS;
 
 
 return <Dialog
@@ -32,7 +32,7 @@ return <Dialog
   setBusy(true);
   setErr('');
   try{
-    await request('',{action:'service-create',id:key,mission_id:missionId,store_id:store||null,store_label:v.store_label||'',kind,reason,channel:v.channel,product_id:v.product_id||null,lot:v.lot||'',code:v.code||'',priority:v.priority||'normal',description:v.description,consent:v.consent==='on',due_day:v.due_day||''});
+    await request('',{action:'service-create',id:key,mission_id:missionId,store_id:store||null,store_label:v.store_label||'',kind,reasons:picked,channel:v.channel,product_id:v.product_id||null,lot:v.lot||'',code:v.code||'',priority:v.priority||'normal',description:v.description,consent:v.consent==='on',due_day:v.due_day||''});
    done()
    }catch(e){
     setErr((e as Error).message)
@@ -51,19 +51,25 @@ return <Dialog
       className={kind===k?'selected':''}
       onClick={()=>{
      setKind(k);
-    setReason('')
+    setPicked([])
     }}>
      {n}</button>)}</div>}
 
-   <label>
-    {kind==='request'?'Que souhaite la pharmacie ?':'Quel est le problème ?'}
-    <select
-      required
-      value={reason}
-      onChange={e=>setReason(e.target.value)}>
-     <option value="">Choisir un motif</option>
-     {Object.entries(reasons).map(([k,r])=><option key={k} value={k}>
-      {r.label}</option>)}</select></label>
+   <fieldset className="reason-picks" aria-describedby={hint}>
+    <legend>
+     {kind==='request'?'Que souhaite la pharmacie ?':'Quel est le problème ?'}</legend>
+    <p className="reason-meta"><span id={hint}>Jusqu’à {MAX_REASONS} motifs</span><b aria-live="polite">{picked.length} / {MAX_REASONS} motifs</b></p>
+    <div className="reason-list">
+     {Object.entries(reasons).map(([k,r])=>{const rank=picked.indexOf(k);return <label
+       key={k}
+       className={'check'+(rank>=0?' on':full?' off':'')}>
+      <input
+        type="checkbox"
+        checked={rank>=0}
+        disabled={rank<0&&full}
+        onChange={()=>setPicked(p=>p.includes(k)?p.filter(x=>x!==k):p.length<MAX_REASONS?[...p,k]:p)}/>
+      <span>{r.label}</span>
+      {rank===0&&picked.length>1&&<small>Principal</small>}</label>})}</div></fieldset>
 
    <div className="form-grid">
     <label>Pharmacie<select
@@ -83,7 +89,7 @@ return <Dialog
       placeholder="Pharmacie ou point de vente"/></label>}
 
    <label>
-    {reason==='other'?'Précisez votre demande':'Détails utiles'}
+    {picked.includes('other')?'Précisez votre demande':'Détails utiles'}
     <textarea
       name="description"
       required
@@ -120,7 +126,7 @@ return <Dialog
 
    {err&&<Warning>
     {err}</Warning>}
-   <button className="primary" disabled={busy||!reason}>
+   <button className="primary" disabled={busy||!picked.length}>
     {busy?'Enregistrement…':kind==='request'?'Enregistrer la demande':'Enregistrer la réclamation'}</button></form></Dialog>
 
 }

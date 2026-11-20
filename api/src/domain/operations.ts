@@ -18,8 +18,12 @@ export const REQUEST_REASONS:Record<string,{label:string;category:string}>={
 export const NOTE_TYPES:Record<string,string>={shelf:'Rayon & mise en avant',competitor:'Concurrence',feedback:'Retour client',availability:'Disponibilité & stock',opportunity:'Opportunité commerciale',other:'Autre observation'};
 export const NOTE_STATUS:Record<string,string>={new:'À lire',seen:'Vu',actioned:'Action engagée'};
 export const SENTIMENTS:Record<string,string>={positive:'Positif',neutral:'Neutre',negative:'Négatif'};
+export const MAX_REASONS=3;
 export function reasonFor(kind:string,reason:string){const r=kind==='request'?REQUEST_REASONS:REASONS;return Object.hasOwn(r,reason)?r[reason]:undefined;}
-export function reasonLabel(c:any){return reasonFor(c.kind,c.reason)?.label||'Autre';}
+// Selection order, main reason first; rows created before multiple reasons only have `reason`.
+export function caseReasons(c:any):string[]{const keys=String(c.reasons||'').split(',').filter(Boolean);return keys.length?keys:c.reason?[c.reason]:[];}
+export function reasonCategory(kind:string,keys:string[]){const found=keys.map(k=>reasonFor(kind,k)?.category);return found.includes('tolerance')?'tolerance':found.includes('quality')?'quality':'commercial';}
+export function reasonLabel(c:any){return caseReasons(c).map(k=>reasonFor(c.kind,k)?.label||'Autre').join(' · ')||'Autre';}
 export function canReadCase(u:Pick<User,'id'|'role'>,c:any){return manages(u)||u.role==='doctor'&&c.kind==='complaint'||u.role==='field'&&c.author_id===u.id;}
 export function safeCase(u:Pick<User,'id'|'role'>,c:any){const {private_note,description,...safe}=c;return {...safe,...(u.role==='doctor'?{private_note,description}:c.author_id===u.id||manages(u)&&c.category!=='tolerance'?{description}:{})};}
 export function canReadFieldNote(u:Pick<User,'id'|'role'>,n:any){return manages(u)||u.role==='field'&&n.author_id===u.id;}
