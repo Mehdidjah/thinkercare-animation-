@@ -258,8 +258,9 @@ return <Dialog
     setErr('');
     try{
       await request('',{action:'service-update',id,version:c.version,status:v.status,assignee_id:doctor?data.user.id:v.assignee_id||null,due_day:v.due_day||'',public_note:v.public_note,...(doctor?{private_note:v.private_note}:{})});
-     await r.reload();
-     saved()
+     saved();
+     // The form is keyed by version: stay locked until the new one is loaded.
+     await r.reload()
      }catch(e){
       setErr((e as Error).message)
      }finally{
@@ -303,8 +304,8 @@ return <Dialog
       await request('',{action:'service-message',id,message_id:messageId,note:v.note});
      setMessageId(uid());
      form.reset();
-     await r.reload();
-     saved()
+     saved();
+     void r.reload()
      }catch(e){
       setErr((e as Error).message)
      }finally{

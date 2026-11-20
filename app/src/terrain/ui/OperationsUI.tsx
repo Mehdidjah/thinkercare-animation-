@@ -1,26 +1,31 @@
 import {checkedResult} from '../domain/response-checks';
 import {useState, useEffect, useCallback, useRef, type ReactNode, type FormEvent} from 'react';
-import {request, cachedResult} from './client';
+import {request, cachedResult, onDataChange, sessionExpired} from './client';
 import {csv} from '../domain/core';
 
-export function useRemote(query:string, enabled=true) {
+/** Stale-while-revalidate read: the last known result renders at once and is
+ * refreshed in the background, every `every` ms while the tab is visible, when
+ * it becomes visible again and after any write. Widgets polling the same query
+ * share one request. `reload()` without argument forces a network read. */
+export function useRemote(query:string, enabled=true, every=20000) {
  const [data,setData] = useState<any>(() => enabled ? cachedResult(query) ?? null : null);
  const [error,setError] = useState('');
  const [loading,setLoading] = useState(() => enabled && cachedResult(query) === undefined);
  const latest = useRef({query, sequence:0, mounted:true});
  latest.current.query = query;
 
- const reload = useCallback(async (fresh=true) => {
+ const reload = useCallback(async (maxAge=0) => {
   if (!enabled) return;
   const sequence = ++latest.current.sequence;
   const isCurrent = () => latest.current.mounted && latest.current.query===query && latest.current.sequence===sequence;
   try {
-   const result = checkedResult(query, await request(query, undefined, {fresh}));
+   const result = checkedResult(query, await request(query, undefined, {maxAge}));
    if (isCurrent()) {setData(result);setError('');}
   } catch (e) {
-   if (isCurrent() && !(e as any).stale) {
+   if (isCurrent()) {
     setError((e as Error).message);
-    if ([401,403].includes((e as any).status)) setData(null);
+    // A 401 keeps the screen as is under the login overlay; a 403 hides what is no longer allowed.
+    if ((e as any).status===403) setData(null);
    }
   } finally {
    if (isCurrent()) setLoading(false);
@@ -28,24 +33,40 @@ export function useRemote(query:string, enabled=true) {
  }, [query,enabled]);
 
  useEffect(() => {
-  latest.current.mounted=true;
+  const state=latest.current;
+  state.mounted=true;
   const cached = enabled ? cachedResult(query) : undefined;
   setData(cached ?? null);
   setError('');
   setLoading(enabled && cached === undefined);
   if (!enabled) return;
-  void reload(false);
-  const timer=setInterval(() => {
-   if (document.visibilityState==='visible') void reload();
-  },20000);
+  void reload(15000);
+  const live = () => !document.hidden && !sessionExpired();
+  // Most of a period: a widget polling the same query just before is reused.
+  const timer=setInterval(() => {if (live()) void reload(every*0.9);},every);
+  const visible = () => {if (live()) void reload(every*0.9);};
+  document.addEventListener('visibilitychange',visible);
+  const off = onDataChange(() => {if (live()) void reload(15000);});
   return () => {
-   latest.current.mounted=false;
-   latest.current.sequence++;
+   state.mounted=false;
+   state.sequence++;
    clearInterval(timer);
+   document.removeEventListener('visibilitychange',visible);
+   off();
   };
- }, [reload]);
+ }, [reload,query,enabled,every]);
 
  return {data,error,loading,reload};
+}
+
+/** The value, once it has stopped changing for `ms` (typed dates). */
+export function useSettled<T>(value:T, ms=500) {
+ const [settled,setSettled] = useState(value);
+ useEffect(() => {
+  const timer=setTimeout(() => setSettled(value),ms);
+  return () => clearTimeout(timer);
+ }, [value,ms]);
+ return settled;
 }
 
 export const formValues=(e:FormEvent<HTMLFormElement>) =>
