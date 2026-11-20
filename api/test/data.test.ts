@@ -146,7 +146,7 @@ test('service requests reject inherited object keys as reasons (400, not 500)', 
     kind, reason, channel: 'onsite', product_id: null, lot: '', code: '', priority: 'normal', description: 'Description assez longue', consent: false, due_day: ''});
   for (const reason of ['toString', 'constructor', '__proto__', 'hasOwnProperty'])
     for (const kind of ['complaint', 'request'])
-      expect(await failure(terrain.postTerrain(field, body(kind, reason)))).toEqual({status: 400, body: {error: 'Sélectionnez un motif valide.'}});
+      expect(await failure(terrain.postTerrain(field, body(kind, reason)))).toEqual({status: 400, body: {error: 'Sélectionnez entre 1 et 3 motifs valides.'}});
   expect((await terrain.postTerrain(field, body('complaint', 'packaging'))).ok).toBe(true);
   expect((await terrain.postTerrain(field, body('request', 'restock'))).ok).toBe(true);
 });

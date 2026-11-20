@@ -255,6 +255,7 @@ export const tfCases = pgTable('tf_cases', {
   productId: text('product_id').references(() => tfProducts.id),
   kind: text('kind').notNull(),
   reason: text('reason').notNull(),
+  reasons: text('reasons').notNull().default(''),
   category: text('category').notNull(),
   channel: text('channel').notNull().default('onsite'),
   lot: text('lot').notNull().default(''),

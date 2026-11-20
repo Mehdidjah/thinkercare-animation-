@@ -9,6 +9,7 @@ bun run test:auth           # the above plus password hashing (auth-crypto, no d
 bun run test:data           # data integrity, attendance, migrations and seed
 bun run test:platform       # HTTP server: headers, caching, photos, upload limiter, /healthz
 bun run test:midway         # middle photo: unlock time, departure lock, retries, migration 0003
+bun run test:reasons        # up to three reasons per complaint or request, migration 0004
 bun run test:uploads        # photo body limits only (no database)
 bun run --bun tsc --noEmit -p tsconfig.json   # typecheck
 ```
@@ -19,6 +20,7 @@ Suites:
 - `auth-crypto.test.ts`: hash formats and known-answer vectors (no database).
 - `data.test.ts`: unknown motives, account usernames, strict dates, bootstrap caps and `prefetch` (week, bonus strip, attendance alerts), `missing_end` alerts, `close-mission`, the visits listed when an animatrice is deactivated, unique-violation messages, error logging, an idle connection closed by Postgres (logged, not fatal), seed (manager edits kept, `SEED_DEMO_DATA`), void-sale price restore or removal, set-based stock writes, reports limit, audit window, migration `0002` on a fresh and on an existing database, and the boot trigger script taking no table lock.
 - `midway.test.ts`: the middle photo through the real photo and terrain services: refused before the midpoint with the unlock time, departure refused until it exists (also for missions started before the deploy), one per mission with idempotent `photo_id` retries, assigned animatrice only, readable by the mission’s viewers, available at once after a late arrival, manager `close-mission` without it (and never before it when there is one), and migration `0003` on a database already at `0002` with data.
+- `reasons.test.ts`: complaints and requests with one to three reasons through the real services: stored in selection order with the first as `reason`, refused when empty, over three, duplicated, unknown, inherited (`toString`) or from the other kind, category (any tolerance → tolerance with consent, else quality before commercial) with unchanged visibility, the single `reason` (sent by an app opened before the update, and for a single pick), the audit detail, and migration `0004` on a database already at `0003` with cases (backfilled `reasons`; its SQL run again by hand changes nothing).
 - `platform.test.ts`: boots the real `src/main.ts` in a subprocess and checks security headers and the CSP, static `Cache-Control`, JSON compression, the `PUBLIC_APP_URL` redirect, photo caching (`ETag`, `304`) and grid thumbnails, the upload limiter (global and per account) and the cut of stalled or trickling bodies, the check-in pre-check, `/healthz` and JSON 404s.
 - `photo-body.test.ts`: multipart size limits (no database).
 

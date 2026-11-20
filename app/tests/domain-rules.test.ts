@@ -1,5 +1,6 @@
 import {expect, test} from 'bun:test';
 import * as c from '../src/terrain/domain/core';
+import * as o from '../src/terrain/domain/operations';
 
 // Domain assertions kept from the deleted legacy scripts app/tests/terrain.mjs
 // and app/tests/workflow.mjs (their api.server.ts / SQLite parts were dead).
@@ -115,4 +116,38 @@ test('middle photo: halfway through the planned slot, once, before the departure
   expect(c.clockIssue(field as any, m, 'lunch', later)).toBe('Type de pointage invalide.');
   // No new attendance alert for a missing middle photo.
   expect(c.attendance(m, '2026-11-14T15:00:00.000Z')).toBeNull();
+});
+
+test('cases with up to three reasons: order, labels, category and rows saved with a single reason', () => {
+  expect(o.MAX_REASONS).toBe(3);
+  // Selection order is kept, the first one is the main reason.
+  expect(o.caseReasons({kind: 'complaint', reason: 'price', reasons: 'price,damaged,other'})).toEqual(['price', 'damaged', 'other']);
+  expect(o.reasonLabel({kind: 'complaint', reason: 'price', reasons: 'price,damaged,other'})).toBe('Prix ou promotion · Produit abîmé ou fuite · Autre — préciser');
+  expect(o.reasonLabel({kind: 'request', reason: 'dermoscan', reasons: 'dermoscan,training'})).toBe('Demander un Dermoscan · Formation de l’équipe pharmacie');
+  // Rows created before multiple reasons, or by an API not yet updated, only have `reason`.
+  for (const reasons of [undefined, null, '']) {
+    expect(o.caseReasons({kind: 'complaint', reason: 'expiry', reasons})).toEqual(['expiry']);
+    expect(o.reasonLabel({kind: 'complaint', reason: 'expiry', reasons})).toBe('Péremption ou lot');
+  }
+  expect(o.caseReasons({kind: 'complaint'})).toEqual([]);
+  expect(o.reasonLabel({kind: 'complaint'})).toBe('Autre');
+  // Unknown, inherited or other-kind keys read as « Autre ».
+  expect(o.reasonLabel({kind: 'complaint', reason: 'gone', reasons: 'gone,price'})).toBe('Autre · Prix ou promotion');
+  expect(o.reasonLabel({kind: 'complaint', reason: 'toString', reasons: ''})).toBe('Autre');
+  expect(o.reasonLabel({kind: 'request', reason: 'price', reasons: 'price,restock'})).toBe('Autre · Réassort ou commande');
+  // Category: tolerance first, then quality, else commercial.
+  expect(o.reasonCategory('complaint', ['price'])).toBe('commercial');
+  expect(o.reasonCategory('complaint', ['price', 'texture'])).toBe('quality');
+  expect(o.reasonCategory('complaint', ['packaging', 'service', 'tolerance'])).toBe('tolerance');
+  expect(o.reasonCategory('complaint', ['tolerance'])).toBe('tolerance');
+  expect(o.reasonCategory('complaint', ['other', 'delivery'])).toBe('commercial');
+  expect(o.reasonCategory('request', ['restock', 'training', 'other'])).toBe('commercial');
+  expect(o.reasonCategory('request', ['tolerance', 'packaging'])).toBe('commercial');
+  expect(o.reasonCategory('complaint', ['toString'])).toBe('commercial');
+  // Visibility still follows the kind and the category only.
+  const tolerance = {kind: 'complaint', category: 'tolerance', author_id: 'f1', reason: 'price', reasons: 'price,tolerance', description: 'Faits', private_note: 'Note'};
+  expect(o.safeCase(manager as any, tolerance)).not.toHaveProperty('description');
+  expect(o.safeCase(manager as any, tolerance)).toMatchObject({reasons: 'price,tolerance'});
+  expect(o.safeCase(doctor as any, tolerance)).toMatchObject({description: 'Faits', private_note: 'Note'});
+  expect(o.canReadCase(doctor as any, {kind: 'request', reasons: 'restock'})).toBe(false);
 });

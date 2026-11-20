@@ -94,6 +94,8 @@ Le service a un volume attaché. Railway ne fait donc jamais tourner deux déplo
 
 Pendant l’écart, la nouvelle interface face à l’ancienne API garde le pointage arrivée → départ, sans photo du milieu. Une interface ouverte avant le déploiement n’a pas le bouton de la photo du milieu : le refus du départ lui demande de recharger l’application.
 
+Motifs multiples des réclamations et demandes : une interface ouverte avant le déploiement envoie un seul motif, que la nouvelle API accepte. La nouvelle interface envoie un dossier à un seul motif sous l’ancienne forme : l’ancienne API l’enregistre aussi. Seuls les dossiers à deux ou trois motifs sont refusés par l’ancienne API (« Vérifiez les champs ») jusqu’à la fin du déploiement Railway.
+
 ## 5. Volume photos
 
 - **Taille** : 50 Go montés sur `/data`, dont environ 792 Mo utilisés au 20 novembre 2026.
